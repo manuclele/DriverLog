@@ -1,55 +1,98 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { addLog, getLastTripSector } from '../services/db';
-import { ArrowLeft, Check, ChevronRight, Save, Map } from 'lucide-react';
+import { addLog } from '../services/db';
+import { ArrowLeft, ChevronRight, Save, AlertTriangle, ChevronLeft } from 'lucide-react';
+import { SectorType } from '../types';
+
+const SECTORS: SectorType[] = ['Cisterna', 'Container', 'Centina'];
+const DAYS_INITIALS = ['D', 'L', 'M', 'M', 'G', 'V', 'S']; // Domenica is 0
 
 export const TripForm: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, currentVehicle } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [fetchingPrevious, setFetchingPrevious] = useState(true);
 
+  // State for the Sector (Button Toggles)
+  const [selectedSector, setSelectedSector] = useState<SectorType>('Container');
+  
+  // State for Date (Calendar Strip)
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+
+  // State for the Form
   const [formData, setFormData] = useState({
     bollaNumber: '',
-    sector: '',
     departure: '',
     destination: '',
-    details: 'Standard' // Default details
+    details: 'Standard'
   });
 
-  // Load previous sector on mount
+  // Initialize Sector from LocalStorage OR Assigned Profile
   useEffect(() => {
-    const loadPrevious = async () => {
-      if (user?.uid) {
-        const lastSector = await getLastTripSector(user.uid);
-        if (lastSector) {
-          setFormData(prev => ({ ...prev, sector: lastSector }));
-        }
-      }
-      setFetchingPrevious(false);
-    };
-    loadPrevious();
+    if (user) {
+        // 1. Check local storage for persistence (last used sector)
+        const lastUsedSector = localStorage.getItem(`lastSector_${user.uid}`) as SectorType;
+        
+        // 2. Fallback to assigned sector
+        const initialSector = lastUsedSector || user.assignedSector || 'Container';
+        
+        setSelectedSector(initialSector);
+    }
   }, [user]);
+
+  const handleSectorChange = (sector: SectorType) => {
+      setSelectedSector(sector);
+      if (user) {
+          // Persist the choice
+          localStorage.setItem(`lastSector_${user.uid}`, sector);
+      }
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  // Date Navigation Logic
+  const shiftDate = (days: number) => {
+    const newDate = new Date(selectedDate);
+    newDate.setDate(selectedDate.getDate() + days);
+    setSelectedDate(newDate);
+  };
+
+  // Generate 5 days centered on selected date
+  const getVisibleDates = () => {
+    const dates = [];
+    for (let i = -2; i <= 2; i++) {
+        const d = new Date(selectedDate);
+        d.setDate(selectedDate.getDate() + i);
+        dates.push(d);
+    }
+    return dates;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !currentVehicle) {
+        alert("Nessun veicolo selezionato");
+        return;
+    }
 
     setLoading(true);
+    
+    // Format date as YYYY-MM-DD local time (not UTC) to avoid timezone shifts
+    const offset = selectedDate.getTimezoneOffset();
+    const localDate = new Date(selectedDate.getTime() - (offset*60*1000));
+    const formattedDate = localDate.toISOString().split('T')[0];
+
     try {
       await addLog('logs', {
         type: 'trip',
         userId: user.uid,
-        vehicleId: user.currentVehicleId || 'unknown',
+        vehicleId: currentVehicle.id,
+        sector: selectedSector, // The button value
         ...formData,
-        date: new Date().toISOString().split('T')[0]
+        date: formattedDate
       });
-      // Success feedback could go here
       navigate('/dashboard');
     } catch (error) {
       alert("Errore nel salvataggio");
@@ -57,17 +100,103 @@ export const TripForm: React.FC = () => {
     }
   };
 
+  const isSectorAssigned = user ? selectedSector === user.assignedSector : true;
+
+  // Formatting helpers
+  const monthName = selectedDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' });
+  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4 mb-6">
+    <div className="space-y-5 pb-8">
+      <div className="flex items-center gap-4 mb-2">
         <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-slate-600 active:bg-slate-200 rounded-full">
             <ArrowLeft />
         </button>
-        <h2 className="text-2xl font-bold text-slate-800">Nuovo Viaggio</h2>
+        <div className="flex flex-col">
+            <h2 className="text-2xl font-bold text-slate-800 leading-none">Nuovo Viaggio</h2>
+            {currentVehicle && <span className="text-xs text-slate-500 font-medium mt-1">Veicolo: {currentVehicle.plate}</span>}
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
         
+        {/* BIG SECTOR BUTTONS */}
+        <div className="space-y-2">
+            <div className="flex justify-between items-end">
+                <label className="text-sm font-semibold text-slate-500">Settore Operativo</label>
+                {!isSectorAssigned && (
+                     <span className="text-[10px] text-orange-600 font-bold bg-orange-50 px-2 py-0.5 rounded-full flex items-center gap-1 border border-orange-100">
+                        <AlertTriangle size={10} /> DIVERSO DA ASSEGNATO
+                     </span>
+                )}
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+                {SECTORS.map((sec) => {
+                    const isActive = selectedSector === sec;
+                    return (
+                        <button
+                            key={sec}
+                            type="button"
+                            onClick={() => handleSectorChange(sec)}
+                            className={`py-3 px-1 rounded-xl font-bold text-sm transition-all border-2
+                                ${isActive 
+                                    ? 'bg-slate-800 text-white border-slate-800 shadow-md transform scale-[1.02]' 
+                                    : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                                }
+                            `}
+                        >
+                            {sec}
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+
+        {/* DATE STRIP CALENDAR */}
+        <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-200">
+            <div className="text-center text-sm font-bold text-slate-600 mb-3 capitalize">
+                {capitalize(monthName)}
+            </div>
+            <div className="flex justify-between items-center gap-1">
+                <button type="button" onClick={() => shiftDate(-1)} className="p-2 text-slate-400 active:text-slate-700">
+                    <ChevronLeft size={24} />
+                </button>
+                
+                <div className="flex gap-2 justify-center flex-1">
+                    {getVisibleDates().map((d, i) => {
+                        const isSelected = d.toDateString() === selectedDate.toDateString();
+                        const isToday = d.toDateString() === new Date().toDateString();
+                        
+                        return (
+                            <button
+                                key={i}
+                                type="button"
+                                onClick={() => setSelectedDate(d)}
+                                className={`flex flex-col items-center justify-center w-10 h-14 rounded-lg transition-all
+                                    ${isSelected 
+                                        ? 'bg-blue-600 text-white shadow-md scale-110 z-10' 
+                                        : 'bg-slate-50 text-slate-500 border border-slate-100'
+                                    }
+                                `}
+                            >
+                                <span className={`text-[10px] font-bold mb-0.5 uppercase ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>
+                                    {DAYS_INITIALS[d.getDay()]}
+                                </span>
+                                <span className={`text-lg font-bold leading-none ${isSelected ? 'text-white' : 'text-slate-700'}`}>
+                                    {d.getDate()}
+                                </span>
+                                {isToday && !isSelected && <span className="w-1 h-1 bg-blue-500 rounded-full mt-1"></span>}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                <button type="button" onClick={() => shiftDate(1)} className="p-2 text-slate-400 active:text-slate-700">
+                    <ChevronRight size={24} />
+                </button>
+            </div>
+        </div>
+
         {/* Card 1: Bolla & Info */}
         <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4">
             <div>
@@ -84,34 +213,8 @@ export const TripForm: React.FC = () => {
             </div>
         </div>
 
-        {/* Card 2: Settore (Smart) */}
-        <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4 relative overflow-hidden">
-            {fetchingPrevious && (
-                <div className="absolute top-0 left-0 w-full h-1 bg-blue-100 overflow-hidden">
-                    <div className="h-full bg-blue-500 animate-progress"></div>
-                </div>
-            )}
-            
-            <div>
-                <div className="flex justify-between items-center mb-1">
-                    <label className="block text-sm font-semibold text-slate-500">Settore / Zona</label>
-                    {!fetchingPrevious && formData.sector && (
-                        <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full flex items-center gap-1">
-                            Recuperato <Check size={10} />
-                        </span>
-                    )}
-                </div>
-                <input
-                    type="text"
-                    name="sector"
-                    required
-                    placeholder="Es. Lombardia - Zona A"
-                    value={formData.sector}
-                    onChange={handleChange}
-                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                />
-            </div>
-
+        {/* Card 2: Tratta (Partenza/Destinazione) */}
+        <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4">
             <div className="grid grid-cols-2 gap-4">
                 <div>
                     <label className="block text-sm font-semibold text-slate-500 mb-1">Partenza</label>

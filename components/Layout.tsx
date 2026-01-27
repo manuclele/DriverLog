@@ -1,14 +1,12 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, Truck, UserCircle } from 'lucide-react';
+import { LogOut, Truck } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, logout } = useAuth();
+  const { user, logout, currentVehicle } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-
-  const isHome = location.pathname === '/dashboard';
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans max-w-md mx-auto shadow-2xl relative">
@@ -43,11 +41,11 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         {children}
       </main>
 
-      {/* Bottom Status Bar (Optional Info) */}
+      {/* Bottom Status Bar */}
       {user && (
-        <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-slate-200 p-3 text-xs text-center text-slate-500 flex justify-between px-6">
-            <span>Veicolo: <strong>{user.currentVehicleId}</strong></span>
-            <span>Versione 1.0</span>
+        <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-slate-200 p-3 text-xs text-center text-slate-500 flex justify-between px-6 z-40">
+            <span>Veicolo: <strong>{currentVehicle ? currentVehicle.plate : 'Nessuno'}</strong></span>
+            <span>Versione 1.1</span>
         </div>
       )}
     </div>

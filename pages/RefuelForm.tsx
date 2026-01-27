@@ -6,7 +6,7 @@ import { ArrowLeft, Save, Camera, Euro, Droplet, Gauge } from 'lucide-react';
 
 export const RefuelForm: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, currentVehicle } = useAuth();
   const [loading, setLoading] = useState(false);
   
   const [formData, setFormData] = useState({
@@ -22,14 +22,17 @@ export const RefuelForm: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !currentVehicle) {
+        alert("Errore veicolo");
+        return;
+    }
     setLoading(true);
     
     // Convert strings to numbers for DB
     const payload = {
         type: 'refuel',
         userId: user.uid,
-        vehicleId: user.currentVehicleId || 'unknown',
+        vehicleId: currentVehicle.id,
         stationName: formData.stationName,
         liters: parseFloat(formData.liters),
         cost: parseFloat(formData.cost),
@@ -53,7 +56,10 @@ export const RefuelForm: React.FC = () => {
         <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-slate-600 active:bg-slate-200 rounded-full">
             <ArrowLeft />
         </button>
-        <h2 className="text-2xl font-bold text-slate-800">Rifornimento</h2>
+        <div className="flex flex-col">
+            <h2 className="text-2xl font-bold text-slate-800 leading-none">Rifornimento</h2>
+             {currentVehicle && <span className="text-xs text-slate-500 font-medium mt-1">Veicolo: {currentVehicle.plate}</span>}
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">

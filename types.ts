@@ -1,11 +1,14 @@
 export type Role = 'driver' | 'master';
 
+export type SectorType = 'Cisterna' | 'Container' | 'Centina';
+
 export interface UserProfile {
   uid: string;
   email: string | null;
   displayName: string | null;
   role: Role;
-  currentVehicleId?: string;
+  assignedVehicleId: string; // The default vehicle for this driver
+  assignedSector: SectorType; // The default sector for this driver
 }
 
 export interface Vehicle {
@@ -30,7 +33,7 @@ export interface TripLog extends BaseLog {
   type: 'trip';
   date: string;
   bollaNumber: string;
-  sector: string;
+  sector: SectorType; // Cisterna, Container, Centina
   departure: string;
   destination: string;
   details?: string;
@@ -49,6 +52,15 @@ export interface MaintenanceLog extends BaseLog {
   type: 'maintenance';
   description: string;
   cost?: number;
+}
+
+export interface MonthlyStats {
+  id?: string;
+  userId: string;
+  vehicleId: string;
+  monthKey: string; // Format "YYYY-MM"
+  initialKm: number | null;
+  finalKm: number | null;
 }
 
 export type AnyLog = TripLog | RefuelLog | MaintenanceLog;
