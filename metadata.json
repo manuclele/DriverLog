@@ -1,0 +1,7 @@
+{
+  "name": "DriverLog",
+  "description": "Smart & Simple Progressive Web App for truck drivers to log trips, refueling, and maintenance.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
