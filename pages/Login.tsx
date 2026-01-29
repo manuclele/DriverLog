@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Truck } from 'lucide-react';
+import { Truck, Shield, Briefcase } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const Login: React.FC = () => {
@@ -19,7 +19,7 @@ export const Login: React.FC = () => {
         <Truck size={48} />
       </div>
       <h1 className="text-3xl font-bold mb-2">DriverLog</h1>
-      <p className="text-slate-400 mb-12 text-center max-w-xs">
+      <p className="text-slate-400 mb-10 text-center max-w-xs">
         Gestisci viaggi, rifornimenti e manutenzione in modo semplice e veloce.
       </p>
 
@@ -37,17 +37,41 @@ export const Login: React.FC = () => {
                 <span className="w-full border-t border-slate-700" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-slate-900 px-2 text-slate-500">Oppure</span>
+                <span className="bg-slate-900 px-2 text-slate-500">Modalità Demo</span>
             </div>
         </div>
 
-        <button
-            onClick={demoLogin}
-            className="w-full bg-slate-800 text-white p-4 rounded-xl font-semibold text-base border border-slate-700 hover:bg-slate-700 transition-colors"
-        >
-            Prova versione Demo
-        </button>
+        <div className="grid grid-cols-1 gap-3">
+            <button
+                onClick={() => demoLogin('driver')}
+                className="w-full bg-slate-800 text-slate-200 p-3 rounded-xl font-semibold text-sm border border-slate-700 hover:bg-slate-700 transition-colors flex items-center justify-center gap-2"
+            >
+                <Truck size={16} />
+                Demo Autista
+            </button>
+            
+            <div className="grid grid-cols-2 gap-3">
+                <button
+                    onClick={() => demoLogin('master')}
+                    className="w-full bg-slate-800 text-indigo-300 p-3 rounded-xl font-semibold text-sm border border-slate-700 hover:bg-slate-700 transition-colors flex items-center justify-center gap-2"
+                >
+                    <Shield size={16} />
+                    Demo Master
+                </button>
+                <button
+                    onClick={() => demoLogin('owner')}
+                    className="w-full bg-slate-800 text-emerald-300 p-3 rounded-xl font-semibold text-sm border border-slate-700 hover:bg-slate-700 transition-colors flex items-center justify-center gap-2"
+                >
+                    <Briefcase size={16} />
+                    Demo Owner
+                </button>
+            </div>
+        </div>
       </div>
+      
+      <p className="mt-8 text-xs text-slate-600">
+        v1.1 • Demo Mode Enabled
+      </p>
     </div>
   );
 };

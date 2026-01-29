@@ -1,36 +1,26 @@
-import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore, Firestore } from 'firebase/firestore';
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import { getFirestore } from 'firebase/firestore';
 
-// NOTE: In a real production environment, these would be process.env.NEXT_PUBLIC_...
-// For this demo context, we must rely on the environment variables being present or handle the missing keys gracefully.
+// Configuration provided by the user
 const firebaseConfig = {
-  apiKey: process.env.API_KEY || "demo-key",
-  authDomain: process.env.AUTH_DOMAIN || "demo.firebaseapp.com",
-  projectId: process.env.PROJECT_ID || "demo-project",
-  storageBucket: process.env.STORAGE_BUCKET || "demo.appspot.com",
-  messagingSenderId: process.env.MESSAGING_SENDER_ID || "12345",
-  appId: process.env.APP_ID || "1:12345:web:12345"
+  apiKey: "AIzaSyAUYtiSH2zikgshqnY4feyFewJKZ8Psddc",
+  authDomain: "driverlog-72469.firebaseapp.com",
+  projectId: "driverlog-72469",
+  storageBucket: "driverlog-72469.firebasestorage.app",
+  messagingSenderId: "325805623506",
+  appId: "1:325805623506:web:97563142526794b361050b",
+  measurementId: "G-JLCF4DF0RL"
 };
 
-let app: FirebaseApp;
-let auth: Auth;
-let db: Firestore;
+// Initialize Firebase
+// Using compat libraries for app and auth due to missing modular exports in environment
+const app = firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = getFirestore(app);
+const googleProvider = new firebase.auth.GoogleAuthProvider();
 
-// Initialize Firebase only if we have a valid key, otherwise we might mock it for UI dev
-try {
-  if (!getApps().length) {
-    app = initializeApp(firebaseConfig);
-  } else {
-    app = getApp();
-  }
-  auth = getAuth(app);
-  db = getFirestore(app);
-} catch (error) {
-  console.warn("Firebase initialization failed (likely missing keys). App will run in UI-only mode.", error);
-  // We can leave these undefined or mock them if strictly necessary, 
-  // but for this output, we assume standard usage patterns in components.
-}
+console.log("Firebase connected successfully (Compat)");
 
-export { auth, db };
-export const googleProvider = new GoogleAuthProvider();
+// Export services
+export { auth, db, googleProvider };

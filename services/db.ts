@@ -1,53 +1,113 @@
-import { collection, addDoc, query, where, orderBy, limit, getDocs, setDoc, doc } from 'firebase/firestore';
 import { db } from './firebase';
-import { TripLog, RefuelLog, MaintenanceLog, AnyLog, MonthlyStats } from '../types';
+import { 
+  collection, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  getDocs, 
+  query, 
+  where, 
+  orderBy, 
+  limit, 
+  writeBatch 
+} from 'firebase/firestore';
+import { TripLog, RefuelLog, AnyLog, MonthlyStats, LogType, UserProfile, Vehicle } from '../types';
 
-// Helper to simulate DB delay if DB is not connected
-const simulateDelay = () => new Promise(resolve => setTimeout(resolve, 600));
+// --- UTILS ---
+
+// Get User Profile from DB or return default if new
+export const syncUserProfile = async (uid: string, email: string | null, displayName: string | null): Promise<UserProfile> => {
+    if (!db) throw new Error("Database not initialized");
+
+    const userRef = doc(db, 'users', uid);
+    const userSnap = await getDoc(userRef);
+
+    if (userSnap.exists()) {
+        return userSnap.data() as UserProfile;
+    } else {
+        // Create new user profile
+        const newUser: UserProfile = {
+            uid,
+            email,
+            displayName,
+            role: 'driver', // Default role
+            assignedVehicleId: '', // To be assigned by Master
+            assignedSector: 'Container' // Default
+        };
+        await setDoc(userRef, newUser);
+        return newUser;
+    }
+};
+
+// --- CRUD OPERATIONS ---
 
 export const addLog = async (collectionName: string, data: any) => {
-  if (!db) {
-    await simulateDelay();
-    console.log(`[MOCK DB] Adding to ${collectionName}:`, data);
-    return;
-  }
   try {
-    await addDoc(collection(db, collectionName), {
+    // Add createdAt/timestamp automatically
+    const docRef = await addDoc(collection(db, collectionName), {
       ...data,
       createdAt: new Date().toISOString(),
-      timestamp: Date.now()
+      timestamp: data.timestamp || Date.now()
     });
+    return docRef;
   } catch (e) {
     console.error("Error adding document: ", e);
     throw e;
   }
 };
 
-// --- Monthly Stats Logic ---
+export const updateLog = async (collectionName: string, id: string, data: any) => {
+    try {
+        const docRef = doc(db, collectionName, id);
+        await updateDoc(docRef, data);
+    } catch (e) {
+        console.error("Error updating document: ", e);
+        throw e;
+    }
+};
+
+export const deleteLog = async (collectionName: string, id: string) => {
+    try {
+        await deleteDoc(doc(db, collectionName, id));
+    } catch (e) {
+        console.error("Error deleting document: ", e);
+        throw e;
+    }
+};
+
+export const getLogs = async (userId: string, type: LogType, limitCount = 50): Promise<AnyLog[]> => {
+    try {
+        const q = query(
+            collection(db, 'logs'),
+            where('userId', '==', userId),
+            where('type', '==', type),
+            orderBy('timestamp', 'desc'),
+            limit(limitCount)
+        );
+        
+        const snapshot = await getDocs(q);
+        
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AnyLog));
+    } catch (e) {
+        console.error("Error fetching logs:", e);
+        return [];
+    }
+};
+
+// --- STATS ---
 
 export const getMonthlyStats = async (userId: string, vehicleId: string, monthKey: string): Promise<MonthlyStats | null> => {
-  if (!db) {
-    await simulateDelay();
-    // Mock Data return based on monthKey
-    if (monthKey === new Date().toISOString().slice(0, 7)) {
-       return { userId, vehicleId, monthKey, initialKm: 120000, finalKm: null };
-    }
-    return null;
-  }
-
   try {
-    const statsRef = collection(db, 'monthlyStats');
-    const q = query(
-      statsRef,
-      where('userId', '==', userId),
-      where('vehicleId', '==', vehicleId),
-      where('monthKey', '==', monthKey),
-      limit(1)
-    );
+    // Composite ID for easier direct access: userId_vehicleId_monthKey
+    const compositeId = `${userId}_${vehicleId}_${monthKey}`;
+    const docRef = doc(db, 'monthlyStats', compositeId);
+    const snapshot = await getDoc(docRef);
     
-    const snapshot = await getDocs(q);
-    if (!snapshot.empty) {
-      return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as MonthlyStats;
+    if (snapshot.exists()) {
+      return { id: snapshot.id, ...snapshot.data() } as MonthlyStats;
     }
     return null;
   } catch (e) {
@@ -57,26 +117,48 @@ export const getMonthlyStats = async (userId: string, vehicleId: string, monthKe
 };
 
 export const saveMonthlyStats = async (stats: MonthlyStats) => {
-  if (!db) {
-    await simulateDelay();
-    console.log(`[MOCK DB] Saving Monthly Stats for ${stats.monthKey}:`, stats);
-    return;
-  }
-
   try {
-    // Check if exists first (or use a composite ID like user_vehicle_month to use setDoc directly)
     const compositeId = `${stats.userId}_${stats.vehicleId}_${stats.monthKey}`;
-    await setDoc(doc(db, 'monthlyStats', compositeId), stats, { merge: true });
+    const docRef = doc(db, 'monthlyStats', compositeId);
+    await setDoc(docRef, stats, { merge: true });
   } catch (e) {
     console.error("Error saving monthly stats:", e);
     throw e;
   }
 };
 
-export const getVehicles = async () => {
-    // Mock for dropdowns
-    return [
-        { id: 'v1', plate: 'AB 123 CD', code: 'TRUCK-01', lastKm: 120000 },
-        { id: 'v2', plate: 'EZ 999 XL', code: 'TRUCK-02', lastKm: 85000 }
-    ];
+// --- VEHICLES ---
+
+export const getVehicles = async (): Promise<Vehicle[]> => {
+    try {
+        const q = query(collection(db, 'vehicles'), orderBy('plate'));
+        const snapshot = await getDocs(q);
+        
+        if (snapshot.empty) {
+            return []; 
+        }
+
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Vehicle));
+    } catch (e) {
+        console.error("Error fetching vehicles:", e);
+        return [];
+    }
+};
+
+// --- MASTER ACTIONS ---
+
+export const resetDatabase = async () => {
+    // WARNING: This deletes ALL logs. Use with caution.
+    const batch = writeBatch(db);
+    
+    // 1. Delete Logs
+    const logsSnap = await getDocs(collection(db, 'logs'));
+    logsSnap.forEach((doc) => batch.delete(doc.ref));
+
+    // 2. Delete Stats
+    const statsSnap = await getDocs(collection(db, 'monthlyStats'));
+    statsSnap.forEach((doc) => batch.delete(doc.ref));
+
+    await batch.commit();
+    console.log("Database Reset Complete");
 };

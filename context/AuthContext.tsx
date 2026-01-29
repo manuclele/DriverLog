@@ -1,19 +1,18 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import { auth, googleProvider } from '../services/firebase';
-import { getVehicles } from '../services/db';
-import { UserProfile, Vehicle } from '../types';
+import { getVehicles, syncUserProfile } from '../services/db';
+import { UserProfile, Vehicle, Role } from '../types';
 
 interface AuthContextType {
   user: UserProfile | null;
   currentVehicle: Vehicle | null;
   availableVehicles: Vehicle[];
   loading: boolean;
-  isDrivingAssigned: boolean; // True if current == assigned
+  isDrivingAssigned: boolean;
   setVehicle: (vehicleId: string) => void;
   login: () => Promise<void>;
   logout: () => Promise<void>;
-  demoLogin: () => void;
+  demoLogin: (role?: Role) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -48,17 +47,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Determine which vehicle to select
   const resolveVehicleSelection = (userProfile: UserProfile, vehicles: Vehicle[]) => {
-    // 1. Check local storage for a temporary override
     const storedVehicleId = localStorage.getItem(`lastVehicle_${userProfile.uid}`);
-    
-    // 2. Determine ID to use (Stored > Assigned)
     const targetId = storedVehicleId || userProfile.assignedVehicleId;
-    
-    // 3. Find the object
     const found = vehicles.find(v => v.id === targetId) || vehicles.find(v => v.id === userProfile.assignedVehicleId);
-    
     setCurrentVehicle(found || null);
   };
 
@@ -68,22 +60,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       if (firebaseUser) {
-        // Mock fetching user profile + assigned vehicle
-        const userProfile: UserProfile = {
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          displayName: firebaseUser.displayName,
-          role: 'driver',
-          assignedVehicleId: 'v1', // Default assigned vehicle (mock)
-          assignedSector: 'Container' // Default sector
-        };
-        setUser(userProfile);
-        
-        const vehicles = await loadVehiclesData();
-        resolveVehicleSelection(userProfile, vehicles);
+        try {
+            // 1. Get/Create User Profile in Firestore
+            const userProfile = await syncUserProfile(
+                firebaseUser.uid, 
+                firebaseUser.email, 
+                firebaseUser.displayName
+            );
+            setUser(userProfile);
+            
+            // 2. Load Vehicles
+            const vehicles = await loadVehiclesData();
+            
+            // 3. Resolve Vehicle
+            resolveVehicleSelection(userProfile, vehicles);
 
+        } catch (error) {
+            console.error("Error syncing user profile:", error);
+            // Fallback for UI if DB fails
+            setUser({
+                uid: firebaseUser.uid,
+                email: firebaseUser.email,
+                displayName: firebaseUser.displayName,
+                role: 'driver',
+                assignedVehicleId: '',
+                assignedSector: 'Container'
+            });
+        }
       } else {
         setUser(null);
         setCurrentVehicle(null);
@@ -97,7 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async () => {
     if (!auth) return;
     try {
-      await signInWithPopup(auth, googleProvider);
+      await auth.signInWithPopup(googleProvider);
     } catch (error) {
       console.error("Login failed", error);
     }
@@ -108,36 +113,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
       return;
     }
-    await signOut(auth);
-    localStorage.removeItem('lastVehicle_demo-user-123'); // Clear for demo cleanup usually
+    await auth.signOut();
+    localStorage.removeItem(`lastVehicle_${user?.uid}`);
   };
 
-  const demoLogin = async () => {
-    setLoading(true);
-    // Mock User
-    const demoUser: UserProfile = {
-      uid: 'demo-user-123',
-      email: 'driver@example.com',
-      displayName: 'Mario Rossi',
-      role: 'driver',
-      assignedVehicleId: 'v1', // TRUCK-01 is assigned
-      assignedSector: 'Container'
-    };
-    
-    setUser(demoUser);
-    const vehicles = await loadVehiclesData();
-    resolveVehicleSelection(demoUser, vehicles);
-    
-    setLoading(false);
+  // WARNING: Demo Login now creates a "fake" auth state, 
+  // but it won't work well with real Firestore rules if we enable them strictly.
+  // Useful only for UI testing without network.
+  const demoLogin = async (role: Role = 'driver') => {
+    alert("Attenzione: La modalità Demo Login non salva i dati nel DB reale (richiede Auth Reale). Usa 'Accedi con Google'.");
   };
 
   const setVehicle = (vehicleId: string) => {
     if (!user) return;
-    
     const selected = availableVehicles.find(v => v.id === vehicleId);
     if (selected) {
       setCurrentVehicle(selected);
-      // Persist choice
       localStorage.setItem(`lastVehicle_${user.uid}`, vehicleId);
     }
   };

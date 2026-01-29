@@ -1,4 +1,4 @@
-export type Role = 'driver' | 'master';
+export type Role = 'driver' | 'master' | 'owner';
 
 export type SectorType = 'Cisterna' | 'Container' | 'Centina';
 
