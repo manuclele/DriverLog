@@ -11,7 +11,7 @@ const createUserWithEmailAndPassword = async (auth: any, email: string, pass: st
 const signInWithEmailAndPassword = async (auth: any, email: string, pass: string) => { console.warn("Mock signInWithEmail"); };
 const updateProfile = async (user: any, profile: any) => { console.warn("Mock updateProfile"); };
 
-import { getVehicles, syncUserProfile } from '../services/db';
+import { getVehicles, syncUserProfile, seedDemoData } from '../services/db';
 import { UserProfile, Vehicle, Role } from '../types';
 
 interface AuthContextType {
@@ -167,9 +167,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         assignedSector: 'Container'
     };
 
+    // --- SEED DEMO DATA ---
+    // If it's a driver, we pre-populate the mock DB with realistic data
+    // so they see stats, trips, and logs immediately.
+    if (role === 'driver') {
+        seedDemoData(mockUser.uid);
+    }
+
     setUser(mockUser);
     
-    // Load mock vehicles
+    // Load mock vehicles (will be seeded by seedDemoData or already exist)
     const vehicles = await loadVehiclesData();
     resolveVehicleSelection(mockUser, vehicles);
     

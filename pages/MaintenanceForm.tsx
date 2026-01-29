@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { addLog, getLogs, deleteLog, updateLog } from '../services/db';
-import { ArrowLeft, Save, Wrench, Disc, Edit2, Trash2, History, ChevronLeft, ChevronRight, AlertTriangle, Hammer, ChevronDown, FileText, Info, Lock } from 'lucide-react';
+import { ArrowLeft, Save, Wrench, Disc, Edit2, Trash2, History, ChevronLeft, ChevronRight, AlertTriangle, Hammer, ChevronDown, FileText, Info, Lock, Gauge } from 'lucide-react';
 import { MaintenanceLog } from '../types';
 
 const DAYS_INITIALS = ['D', 'L', 'M', 'M', 'G', 'V', 'S'];
@@ -34,7 +34,6 @@ const TYRE_OPTIONS = [
 ];
 
 // Mock Workshops List with Provinces
-// In a real scenario, this would be fetched from a 'workshops' collection
 const WORKSHOPS_LIST = [
     { name: "Officina Autorizzata Rossi", province: "MI" },
     { name: "Truck Service Milano Est", province: "MI" },
@@ -48,7 +47,6 @@ const WORKSHOPS_LIST = [
     { name: "Torino Trucks", province: "TO" },
 ];
 
-// Group workshops by province for the dropdown
 const groupedWorkshops = WORKSHOPS_LIST.reduce((acc, curr) => {
     (acc[curr.province] = acc[curr.province] || []).push(curr);
     return acc;
@@ -58,6 +56,19 @@ const sortedProvinces = Object.keys(groupedWorkshops).sort();
 
 const toTitleCase = (str: string) => {
     return str.replace(/\b\w/g, char => char.toUpperCase());
+};
+
+// Helper to format Integers (Km): "120.000"
+const formatIntegerInput = (value: string): string => {
+    let val = value.replace(/\D/g, ''); 
+    return val.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+};
+
+const parseLocaleNumber = (val: string): number => {
+    if (!val) return 0;
+    const clean = val.replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(clean);
+    return isNaN(num) ? 0 : num;
 };
 
 export const MaintenanceForm: React.FC = () => {
@@ -81,7 +92,8 @@ export const MaintenanceForm: React.FC = () => {
     workshopCustom: '',
     descriptionSelect: '',
     descriptionCustom: '',
-    notes: '' 
+    notes: '',
+    km: ''
   });
 
   useEffect(() => {
@@ -115,6 +127,9 @@ export const MaintenanceForm: React.FC = () => {
     } 
     if (name === 'descriptionCustom' || name === 'notes') {
         value = value.charAt(0).toUpperCase() + value.slice(1);
+    }
+    if (name === 'km') {
+        value = formatIntegerInput(value);
     }
 
     setFormData({ ...formData, [name]: value });
@@ -163,7 +178,8 @@ export const MaintenanceForm: React.FC = () => {
           workshopCustom: isStandardWorkshop ? '' : log.workshop,
           descriptionSelect: isStandardDesc ? log.description : 'Altro / Specificare...',
           descriptionCustom: isStandardDesc ? '' : log.description,
-          notes: log.notes || ''
+          notes: log.notes || '',
+          km: log.kmAtMaintenance ? log.kmAtMaintenance.toLocaleString('it-IT') : ''
       });
       
       setSelectedDate(new Date(log.timestamp));
@@ -183,6 +199,9 @@ export const MaintenanceForm: React.FC = () => {
         alert("Seleziona un veicolo");
         return;
     }
+
+    const selectedVehicle = availableVehicles.find(v => v.id === targetVehicleId);
+    const isTractor = selectedVehicle?.type === 'tractor';
     
     // Validate Description
     let finalDescription = formData.descriptionSelect;
@@ -210,6 +229,16 @@ export const MaintenanceForm: React.FC = () => {
         return;
     }
 
+    // Validate Km for Tractor
+    let kmValue: number | undefined = undefined;
+    if (isTractor) {
+        if (!formData.km) {
+            alert("Inserire i Km attuali della motrice");
+            return;
+        }
+        kmValue = parseLocaleNumber(formData.km);
+    }
+
     setLoading(true);
     
     const isToday = selectedDate.toDateString() === new Date().toDateString();
@@ -223,6 +252,7 @@ export const MaintenanceForm: React.FC = () => {
         description: finalDescription,
         workshop: finalWorkshop,
         notes: formData.notes,
+        kmAtMaintenance: kmValue,
         timestamp: timestamp
     };
 
@@ -239,7 +269,7 @@ export const MaintenanceForm: React.FC = () => {
       setFormData({ 
           workshopSelect: '', workshopCustom: '', 
           descriptionSelect: '', descriptionCustom: '', 
-          notes: '' 
+          notes: '', km: ''
       });
       // Don't reset vehicle ID
 
@@ -265,6 +295,10 @@ export const MaintenanceForm: React.FC = () => {
   // Theme Colors
   const buttonBg = isMechanic ? 'bg-orange-500 shadow-orange-200' : 'bg-slate-600 shadow-slate-200';
   const buttonBgEdit = isMechanic ? 'bg-orange-600' : 'bg-slate-700';
+
+  // Check if selected vehicle is a tractor
+  const selectedVehicle = availableVehicles.find(v => v.id === targetVehicleId);
+  const isTractor = selectedVehicle?.type === 'tractor';
 
   return (
     <div className="space-y-6 pb-8">
@@ -436,6 +470,26 @@ export const MaintenanceForm: React.FC = () => {
                     </div>
                 </div>
             )}
+            
+            {/* KM INPUT - ONLY FOR TRACTORS */}
+            {isTractor && (
+                 <div className="animate-fade-in">
+                    <label className="block text-sm font-semibold text-slate-500 mb-1">Km Totali Attuali</label>
+                    <div className="relative">
+                        <Gauge className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                        <input
+                            type="text"
+                            inputMode="numeric"
+                            name="km"
+                            required
+                            placeholder="Es. 120.500"
+                            value={formData.km}
+                            onChange={handleChange}
+                            className={`w-full pl-12 p-4 bg-slate-50 border border-slate-200 rounded-lg text-xl font-mono focus:ring-2 outline-none ${isMechanic ? 'focus:ring-orange-200' : 'focus:ring-slate-200'}`}
+                        />
+                    </div>
+                </div>
+            )}
 
             {/* INTERVENTION TYPE DROPDOWN */}
             <div>
@@ -505,7 +559,7 @@ export const MaintenanceForm: React.FC = () => {
         {editingId && (
             <button 
                 type="button" 
-                onClick={() => { setEditingId(null); setFormData({ workshopSelect: '', workshopCustom: '', descriptionSelect: '', descriptionCustom: '', notes: '' }); }}
+                onClick={() => { setEditingId(null); setFormData({ workshopSelect: '', workshopCustom: '', descriptionSelect: '', descriptionCustom: '', notes: '', km: '' }); }}
                 className="w-full py-2 text-slate-500 text-sm underline"
             >
                 Annulla Modifica
@@ -551,9 +605,17 @@ export const MaintenanceForm: React.FC = () => {
                                   {log.description}
                               </p>
 
-                              <div className="flex items-center gap-2 text-sm text-slate-500">
-                                  <Hammer size={14} />
-                                  <span className="font-medium">{log.workshop}</span>
+                              <div className="flex items-center gap-4 text-sm text-slate-500">
+                                  <div className="flex items-center gap-1">
+                                    <Hammer size={14} />
+                                    <span className="font-medium">{log.workshop}</span>
+                                  </div>
+                                  {log.kmAtMaintenance && (
+                                    <div className="flex items-center gap-1 bg-slate-100 px-2 rounded-md">
+                                        <Gauge size={14} className="text-slate-400"/>
+                                        <span className="font-mono text-slate-600 text-xs">{log.kmAtMaintenance.toLocaleString('it-IT')} km</span>
+                                    </div>
+                                  )}
                               </div>
                               
                               {log.notes && (

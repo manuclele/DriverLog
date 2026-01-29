@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Fuel, Wrench, AlertTriangle, ChevronLeft, ChevronRight, Gauge, Calculator } from 'lucide-react';
+import { MapPin, Fuel, Wrench, AlertTriangle, ChevronLeft, ChevronRight, Gauge, Calculator, History, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getMonthlyStats, saveMonthlyStats } from '../services/db';
-import { MonthlyStats } from '../types';
+import { getMonthlyStats, saveMonthlyStats, getPreviousMonthStats, getUserMonthlyStats } from '../services/db';
+import { MonthlyStats, Vehicle } from '../types';
 
 const ActionCard: React.FC<{
   title: string;
@@ -35,6 +35,121 @@ const formatNumber = (num: string | number | null): string => {
   return n.toLocaleString('it-IT');
 };
 
+// --- SUB-COMPONENT FOR INDIVIDUAL VEHICLE ROW ---
+const VehicleStatRow: React.FC<{
+    vehicle: Vehicle;
+    monthKey: string;
+    userId: string;
+    isAssigned: boolean;
+    initialStats: MonthlyStats | null;
+    onStatsUpdate: () => void;
+}> = ({ vehicle, monthKey, userId, isAssigned, initialStats, onStatsUpdate }) => {
+    const [inputs, setInputs] = useState({ 
+        initial: initialStats?.initialKm ? initialStats.initialKm.toString() : '', 
+        final: initialStats?.finalKm ? initialStats.finalKm.toString() : '' 
+    });
+    const [isSaving, setIsSaving] = useState(false);
+
+    // Auto-fill logic on mount if inputs are empty
+    useEffect(() => {
+        const tryAutoFill = async () => {
+            if (!inputs.initial) {
+                 const prevData = await getPreviousMonthStats(userId, vehicle.id, monthKey);
+                 if (prevData?.finalKm) {
+                     setInputs(prev => ({ ...prev, initial: prevData.finalKm!.toString() }));
+                     // We don't save immediately, wait for user interaction or blur
+                 }
+            }
+        };
+        tryAutoFill();
+    }, [vehicle.id, monthKey]);
+
+    const handleChange = (field: 'initial' | 'final', value: string) => {
+        const raw = value.replace(/\D/g, '');
+        setInputs(prev => ({ ...prev, [field]: raw }));
+    };
+
+    const handleSave = async () => {
+        if (!inputs.initial && !inputs.final) return; // Don't save empty
+        setIsSaving(true);
+        const newStats: MonthlyStats = {
+            ...initialStats, // Keep existing ID if present
+            userId,
+            vehicleId: vehicle.id,
+            monthKey,
+            initialKm: inputs.initial ? parseInt(inputs.initial) : null,
+            finalKm: inputs.final ? parseInt(inputs.final) : null
+        };
+        await saveMonthlyStats(newStats);
+        setIsSaving(false);
+        onStatsUpdate(); // Notify parent to recalc totals
+    };
+
+    const start = inputs.initial ? parseInt(inputs.initial) : 0;
+    const end = inputs.final ? parseInt(inputs.final) : 0;
+    const delta = (inputs.final && inputs.initial && end >= start) ? end - start : 0;
+
+    return (
+        <div className={`p-4 border-b border-slate-100 ${isAssigned ? 'bg-white' : 'bg-yellow-50/80'}`}>
+             <div className="flex items-center justify-between mb-2">
+                 <div className="flex items-center gap-2">
+                     <span className={`text-xs font-bold px-2 py-0.5 rounded border ${isAssigned ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-yellow-100 border-yellow-200 text-yellow-800'}`}>
+                         {vehicle.plate}
+                     </span>
+                     <span className="text-[10px] text-slate-400 font-mono">{vehicle.code}</span>
+                 </div>
+                 {!isAssigned && (
+                     <div className="flex items-center gap-1 text-[10px] font-bold text-yellow-600 bg-white px-2 py-0.5 rounded-full shadow-sm">
+                         <AlertCircle size={10} /> NON ASSEGNATO
+                     </div>
+                 )}
+             </div>
+             
+             <div className="grid grid-cols-2 gap-4">
+                 <div>
+                    <label className="text-[10px] text-slate-400 font-bold uppercase mb-1 block">Inizio</label>
+                    <input 
+                        type="text" 
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={formatNumber(inputs.initial)}
+                        onChange={(e) => handleChange('initial', e.target.value)}
+                        onBlur={handleSave}
+                        className={`w-full border focus:ring-2 outline-none p-2 text-lg font-mono rounded-lg transition-all text-center
+                            ${isAssigned 
+                                ? 'bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-100 text-slate-700' 
+                                : 'bg-white border-yellow-200 focus:border-yellow-500 focus:ring-yellow-200 text-yellow-900'
+                            }`}
+                    />
+                 </div>
+                 <div>
+                    <label className="text-[10px] text-slate-400 font-bold uppercase mb-1 block">Fine</label>
+                    <input 
+                        type="text" 
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={formatNumber(inputs.final)}
+                        onChange={(e) => handleChange('final', e.target.value)}
+                        onBlur={handleSave}
+                        className={`w-full border focus:ring-2 outline-none p-2 text-lg font-mono rounded-lg transition-all text-center
+                            ${isAssigned 
+                                ? 'bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-100 text-slate-700' 
+                                : 'bg-white border-yellow-200 focus:border-yellow-500 focus:ring-yellow-200 text-yellow-900'
+                            }`}
+                    />
+                 </div>
+             </div>
+             
+             {delta > 0 && (
+                 <div className="text-right mt-2 text-xs font-medium text-slate-400">
+                     Parziale: <span className="text-slate-600 font-bold">{formatNumber(delta)} km</span>
+                 </div>
+             )}
+             {isSaving && <div className="h-0.5 bg-blue-500 animate-progress mt-2 w-full rounded-full opacity-50"></div>}
+        </div>
+    );
+};
+
 export const Home: React.FC = () => {
   const navigate = useNavigate();
   const { user, currentVehicle, availableVehicles, setVehicle, isDrivingAssigned } = useAuth();
@@ -42,78 +157,70 @@ export const Home: React.FC = () => {
   // Month Navigation State
   const [viewDate, setViewDate] = useState(new Date());
   
-  // Monthly Stats State
-  const [stats, setStats] = useState<MonthlyStats | null>(null);
-  const [kmInputs, setKmInputs] = useState<{ initial: string; final: string }>({ initial: '', final: '' });
-  const [isSavingStats, setIsSavingStats] = useState(false);
+  // Data State
+  const [activeVehiclesList, setActiveVehiclesList] = useState<{ vehicle: Vehicle, stats: MonthlyStats | null }[]>([]);
+  const [driverTotalKm, setDriverTotalKm] = useState<number>(0);
+  const [refreshTrigger, setRefreshTrigger] = useState(0); // Simple counter to force reload
 
-  // Month Key Helper (YYYY-MM)
   const getMonthKey = (date: Date) => date.toISOString().slice(0, 7);
+  const monthKey = getMonthKey(viewDate);
 
-  // Load stats when date or vehicle changes
+  // Load ALL stats for the user for this month
   useEffect(() => {
-    const loadStats = async () => {
+    const loadData = async () => {
       if (!user || !currentVehicle) return;
       
-      const key = getMonthKey(viewDate);
-      const data = await getMonthlyStats(user.uid, currentVehicle.id, key);
+      // 1. Get all monthly stats for this user
+      const allStats = await getUserMonthlyStats(user.uid, monthKey);
       
-      if (data) {
-        setStats(data);
-        setKmInputs({
-          initial: data.initialKm ? data.initialKm.toString() : '',
-          final: data.finalKm ? data.finalKm.toString() : ''
-        });
-      } else {
-        setStats(null);
-        setKmInputs({ initial: '', final: '' });
-      }
+      // 2. Identify unique vehicles involved
+      // We want to show:
+      // a) The current selected vehicle (ALWAYS)
+      // b) Any other vehicle that has stats for this month
+      
+      const vehicleIdsToShow = new Set<string>();
+      vehicleIdsToShow.add(currentVehicle.id); // Always show current
+      allStats.forEach(s => vehicleIdsToShow.add(s.vehicleId));
+
+      // 3. Build the display list
+      const list = Array.from(vehicleIdsToShow).map(vId => {
+          const v = availableVehicles.find(av => av.id === vId);
+          if (!v) return null; // Should not happen usually
+          const s = allStats.find(stat => stat.vehicleId === vId) || null;
+          return { vehicle: v, stats: s };
+      }).filter(Boolean) as { vehicle: Vehicle, stats: MonthlyStats | null }[];
+
+      // Sort: Assigned Vehicle first, then current (if different), then others
+      list.sort((a, b) => {
+          if (a.vehicle.id === user.assignedVehicleId) return -1;
+          if (b.vehicle.id === user.assignedVehicleId) return 1;
+          return 0;
+      });
+
+      setActiveVehiclesList(list);
+
+      // 4. Calculate Total
+      let total = 0;
+      list.forEach(item => {
+          if (item.stats?.initialKm && item.stats?.finalKm && item.stats.finalKm >= item.stats.initialKm) {
+              total += (item.stats.finalKm - item.stats.initialKm);
+          }
+      });
+      setDriverTotalKm(total);
     };
-    loadStats();
-  }, [viewDate, currentVehicle, user]);
+
+    loadData();
+  }, [viewDate, currentVehicle, user, availableVehicles, refreshTrigger]);
 
   const changeMonth = (delta: number) => {
     const newDate = new Date(viewDate);
+    // Fix: Set date to 1st of month to avoid overflow on 31st (Jan 31 + 1 month -> Feb 31 -> Mar 3)
+    newDate.setDate(1); 
     newDate.setMonth(viewDate.getMonth() + delta);
     setViewDate(newDate);
   };
 
-  const handleKmChange = (field: 'initial' | 'final', value: string) => {
-    // Strip non-numeric chars to keep state clean, allow empty string
-    const rawValue = value.replace(/\D/g, '');
-    setKmInputs(prev => ({ ...prev, [field]: rawValue }));
-  };
-
-  const saveKmStats = async () => {
-    if (!user || !currentVehicle) return;
-    
-    setIsSavingStats(true);
-    const key = getMonthKey(viewDate);
-    
-    const newStats: MonthlyStats = {
-      ...stats,
-      userId: user.uid,
-      vehicleId: currentVehicle.id,
-      monthKey: key,
-      initialKm: kmInputs.initial ? parseInt(kmInputs.initial) : null,
-      finalKm: kmInputs.final ? parseInt(kmInputs.final) : null,
-    };
-
-    try {
-      await saveMonthlyStats(newStats);
-      setStats(newStats);
-    } catch (error) {
-      console.error("Failed to save stats", error);
-    }
-    setIsSavingStats(false);
-  };
-
   const monthName = viewDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' });
-
-  // Calculation Logic
-  const startKm = parseInt(kmInputs.initial || '0');
-  const endKm = parseInt(kmInputs.final || '0');
-  const totalKm = (kmInputs.final && kmInputs.initial && endKm >= startKm) ? endKm - startKm : null;
 
   return (
     <div className="flex flex-col gap-6 pt-2">
@@ -169,8 +276,8 @@ export const Home: React.FC = () => {
          </div>
       </div>
 
-      {/* MONTHLY STATS CARD */}
-      <div className="bg-white rounded-xl shadow-md border border-slate-100 overflow-hidden">
+      {/* MULTI-VEHICLE MONTHLY STATS CARD */}
+      <div className="bg-white rounded-xl shadow-md border border-slate-100 overflow-hidden relative">
          {/* Header / Navigator */}
          <div className="bg-slate-800 text-white p-3 flex justify-between items-center">
             <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-700 rounded-full active:scale-95 transition-all">
@@ -181,56 +288,36 @@ export const Home: React.FC = () => {
                 <ChevronRight size={20} />
             </button>
          </div>
-         
-         {/* Km Inputs */}
-         <div className="p-4 grid grid-cols-2 gap-4">
-             <div>
-                <label className="text-xs text-slate-500 font-bold uppercase mb-1 flex items-center gap-1">
-                    <Gauge size={12} /> Km Inizio Mese
-                </label>
-                <input 
-                    type="text" 
-                    inputMode="numeric"
-                    placeholder="0"
-                    value={formatNumber(kmInputs.initial)}
-                    onChange={(e) => handleKmChange('initial', e.target.value)}
-                    onBlur={saveKmStats}
-                    className="w-full bg-slate-50 border-b-2 border-slate-200 focus:border-blue-500 outline-none p-2 text-xl font-mono text-slate-700 transition-colors rounded-t-lg"
-                />
-             </div>
-             <div>
-                <label className="text-xs text-slate-500 font-bold uppercase mb-1 flex items-center gap-1">
-                    <Gauge size={12} /> Km Fine Mese
-                </label>
-                <input 
-                    type="text" 
-                    inputMode="numeric"
-                    placeholder="0"
-                    value={formatNumber(kmInputs.final)}
-                    onChange={(e) => handleKmChange('final', e.target.value)}
-                    onBlur={saveKmStats}
-                    className="w-full bg-slate-50 border-b-2 border-slate-200 focus:border-blue-500 outline-none p-2 text-xl font-mono text-slate-700 transition-colors rounded-t-lg"
-                />
-             </div>
+
+         {/* Vehicle List */}
+         <div className="max-h-80 overflow-y-auto">
+             {activeVehiclesList.map((item) => (
+                 <VehicleStatRow 
+                    key={item.vehicle.id}
+                    vehicle={item.vehicle}
+                    monthKey={monthKey}
+                    userId={user!.uid}
+                    isAssigned={item.vehicle.id === user?.assignedVehicleId}
+                    initialStats={item.stats}
+                    onStatsUpdate={() => setRefreshTrigger(prev => prev + 1)}
+                 />
+             ))}
          </div>
          
-         {/* Calculated Total Bar */}
-         {totalKm !== null && (
-            <div className="bg-emerald-50 px-4 py-3 flex justify-between items-center border-t border-emerald-100">
-                <span className="text-emerald-700 text-sm font-bold flex items-center gap-2">
-                    <Calculator size={16} /> DISTANZA TOTALE
+         {/* Grand Total Bar (Driver's Monthly Total) */}
+         <div className="bg-emerald-50 px-4 py-3 flex justify-between items-center border-t border-emerald-100 relative z-10 shadow-[0_-5px_10px_rgba(0,0,0,0.05)]">
+            <div className="flex flex-col">
+                <span className="text-emerald-800 text-xs font-bold flex items-center gap-1 uppercase tracking-tight">
+                    <History size={14} /> Totale Autista
                 </span>
-                <span className="text-2xl font-black text-emerald-600 tracking-tight">
-                    {formatNumber(totalKm)} <span className="text-sm font-medium text-emerald-500">km</span>
+                <span className="text-[10px] text-emerald-600 font-medium leading-none">
+                    Mese di {viewDate.toLocaleString('it-IT', { month: 'long' })}
                 </span>
             </div>
-         )}
-
-         {isSavingStats && (
-            <div className="h-1 w-full bg-blue-100 overflow-hidden">
-                <div className="h-full bg-blue-500 animate-progress"></div>
-            </div>
-         )}
+            <span className="text-3xl font-black text-emerald-600 tracking-tight">
+                {formatNumber(driverTotalKm)} <span className="text-sm font-medium text-emerald-500">km</span>
+            </span>
+         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4">

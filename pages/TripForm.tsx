@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { addLog, getLogs, deleteLog, updateLog } from '../services/db';
-import { ArrowLeft, ChevronRight, Save, AlertTriangle, ChevronLeft, Trash2, Edit2, Calendar, Lock } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Save, AlertTriangle, ChevronLeft, Trash2, Edit2, Calendar, Lock, MapPin, Truck } from 'lucide-react';
 import { SectorType, TripLog } from '../types';
 
 const SECTORS: SectorType[] = ['Cisterna', 'Container', 'Centina'];
@@ -14,9 +14,16 @@ const toTitleCase = (str: string) => {
     return str.replace(/\b\w/g, char => char.toUpperCase());
 };
 
+// Helper: Format YYYY-MM-DD to DD/MM/YYYY
+const toEuroDate = (isoDate: string) => {
+    if (!isoDate) return '';
+    const [y, m, d] = isoDate.split('-');
+    return `${d}/${m}/${y}`;
+};
+
 export const TripForm: React.FC = () => {
   const navigate = useNavigate();
-  const { user, currentVehicle } = useAuth();
+  const { user, currentVehicle, availableVehicles } = useAuth();
   const [loading, setLoading] = useState(false);
   
   // Refs for keyboard navigation
@@ -158,7 +165,7 @@ export const TripForm: React.FC = () => {
     const payload = {
         type: 'trip',
         userId: user.uid,
-        vehicleId: currentVehicle.id,
+        vehicleId: currentVehicle.id, // Assigns the trip to the CURRENTLY selected vehicle
         sector: selectedSector,
         ...formData,
         date: formattedDate,
@@ -201,6 +208,25 @@ export const TripForm: React.FC = () => {
       const logDate = new Date(log.date);
       return logDate.getMonth() === selectedDate.getMonth() && logDate.getFullYear() === selectedDate.getFullYear();
   });
+
+  // Group History by Date
+  const groupedHistory = filteredHistory.reduce((groups, log) => {
+      const date = log.date;
+      if (!groups[date]) {
+          groups[date] = [];
+      }
+      groups[date].push(log);
+      return groups;
+  }, {} as Record<string, TripLog[]>);
+
+  // Helper to get background color based on sector
+  const getSectorStyle = (sector: SectorType) => {
+      switch(sector) {
+          case 'Cisterna': return 'bg-cyan-50 border-cyan-100';
+          case 'Centina': return 'bg-orange-50 border-orange-100';
+          default: return 'bg-white border-slate-100'; // Container
+      }
+  };
 
   return (
     <div className="space-y-5 pb-8">
@@ -399,70 +425,98 @@ export const TripForm: React.FC = () => {
 
       </form>
 
-      {/* TRIP HISTORY */}
+      {/* TRIP HISTORY - GROUPED BY DATE */}
       <div className="mt-8 pt-6 border-t border-slate-200">
           <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
               <Calendar className="text-slate-400" size={20} />
               Viaggi: <span className="text-slate-600 capitalize">{monthName}</span>
           </h3>
 
-          {filteredHistory.length === 0 ? (
+          {Object.keys(groupedHistory).length === 0 ? (
               <div className="text-center py-8 text-slate-400 italic bg-white rounded-xl border border-dashed border-slate-300">
                   Nessun viaggio registrato in {monthName}
               </div>
           ) : (
-              <div className="space-y-3">
-                  {filteredHistory.map(trip => {
-                      const editable = canEdit(trip);
-                      return (
-                      <div key={trip.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col gap-2 relative group">
-                          {/* Row 1: Header */}
-                          <div className="flex justify-between items-start">
-                              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{trip.date}</span>
-                              <div className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                                  {trip.sector}
-                              </div>
-                          </div>
-                          
-                          {/* Row 2: Content */}
-                          <div className="flex items-center gap-2">
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-2 text-slate-800 font-bold text-lg leading-tight">
-                                        <span>{trip.departure}</span>
-                                        <ChevronRight size={16} className="text-slate-400" />
-                                        <span>{trip.destination}</span>
-                                    </div>
-                                    <div className="text-sm text-slate-500 mt-0.5">
-                                        Bolla: <span className="font-mono text-slate-700">{trip.bollaNumber}</span> • {trip.details}
-                                    </div>
-                                </div>
+              <div className="space-y-6">
+                  {Object.entries(groupedHistory).map(([date, logs]) => (
+                      <div key={date} className="animate-fade-in">
+                          {/* Date Header */}
+                          <div className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur py-2 mb-2 border-b border-slate-200 flex items-center gap-2">
+                              <span className="bg-slate-800 text-white text-xs font-bold px-2 py-1 rounded">
+                                  {toEuroDate(date)}
+                              </span>
                           </div>
 
-                          {/* Row 3: Actions */}
-                          <div className="flex justify-end gap-3 mt-2 border-t border-slate-50 pt-2">
-                              {editable ? (
-                                <>
-                                  <button 
-                                    onClick={() => handleEdit(trip)} 
-                                    className="flex items-center gap-1 text-xs font-bold text-blue-600 px-3 py-1.5 bg-blue-50 rounded-lg hover:bg-blue-100"
-                                  >
-                                      <Edit2 size={12} /> MODIFICA
-                                  </button>
-                                  <button 
-                                    onClick={() => handleDelete(trip.id!, trip)} 
-                                    className="flex items-center gap-1 text-xs font-bold text-red-600 px-3 py-1.5 bg-red-50 rounded-lg hover:bg-red-100"
-                                  >
-                                      <Trash2 size={12} /> ELIMINA
-                                  </button>
-                                </>
-                              ) : (
-                                  <span className="flex items-center gap-1 text-[10px] text-slate-400 bg-slate-100 px-2 py-1 rounded">
-                                      <Lock size={10} /> BLOCCATO (24h)
-                                  </span>
-                              )}
+                          <div className="space-y-3">
+                              {(logs as TripLog[]).map(trip => {
+                                  const editable = canEdit(trip);
+                                  const vehicle = availableVehicles.find(v => v.id === trip.vehicleId);
+                                  const isCurrentVehicle = currentVehicle && trip.vehicleId === currentVehicle.id;
+                                  
+                                  return (
+                                      <div key={trip.id} className={`${getSectorStyle(trip.sector)} p-4 rounded-xl shadow-sm border flex flex-col gap-2 relative group`}>
+                                          {/* Row 1: Header */}
+                                          <div className="flex justify-between items-start">
+                                              <div className="flex items-center gap-2">
+                                                  {/* Vehicle Badge */}
+                                                  <div className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${isCurrentVehicle ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-yellow-100 text-yellow-800 border-yellow-200'}`}>
+                                                      <Truck size={10} />
+                                                      {vehicle?.plate || 'Targa N.D.'}
+                                                  </div>
+                                                  
+                                                  <div className="text-xs font-medium text-slate-400">
+                                                      {trip.details}
+                                                  </div>
+                                              </div>
+                                              
+                                              <div className="bg-white/80 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border border-slate-200 shadow-sm">
+                                                  {trip.sector}
+                                              </div>
+                                          </div>
+                                          
+                                          {/* Row 2: Content */}
+                                          <div className="flex items-center gap-2">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2 text-slate-800 font-bold text-lg leading-tight">
+                                                        <span>{trip.departure}</span>
+                                                        <ChevronRight size={16} className="text-slate-400" />
+                                                        <span>{trip.destination}</span>
+                                                    </div>
+                                                    <div className="text-sm text-slate-500 mt-1 flex items-center gap-2">
+                                                        <MapPin size={12} /> Bolla: <span className="font-mono text-slate-700 bg-white px-1 rounded">{trip.bollaNumber}</span>
+                                                    </div>
+                                                </div>
+                                          </div>
+
+                                          {/* Row 3: Actions */}
+                                          <div className="flex justify-end gap-3 mt-2 border-t border-slate-200/50 pt-2">
+                                              {editable ? (
+                                                <>
+                                                  <button 
+                                                    onClick={() => handleEdit(trip)} 
+                                                    className="flex items-center gap-1 text-xs font-bold text-blue-600 px-3 py-1.5 bg-blue-50 rounded-lg hover:bg-blue-100"
+                                                  >
+                                                      <Edit2 size={12} /> MODIFICA
+                                                  </button>
+                                                  <button 
+                                                    onClick={() => handleDelete(trip.id!, trip)} 
+                                                    className="flex items-center gap-1 text-xs font-bold text-red-600 px-3 py-1.5 bg-red-50 rounded-lg hover:bg-red-100"
+                                                  >
+                                                      <Trash2 size={12} /> ELIMINA
+                                                  </button>
+                                                </>
+                                              ) : (
+                                                  <span className="flex items-center gap-1 text-[10px] text-slate-400 bg-slate-100 px-2 py-1 rounded">
+                                                      <Lock size={10} /> BLOCCATO (24h)
+                                                  </span>
+                                              )}
+                                          </div>
+                                      </div>
+                                  );
+                              })}
                           </div>
                       </div>
-                  )})}
+                  ))}
               </div>
           )}
       </div>

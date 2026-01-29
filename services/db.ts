@@ -14,7 +14,7 @@ import {
   limit, 
   writeBatch 
 } from 'firebase/firestore';
-import { TripLog, RefuelLog, AnyLog, MonthlyStats, LogType, UserProfile, Vehicle, Workshop } from '../types';
+import { TripLog, RefuelLog, AnyLog, MonthlyStats, LogType, UserProfile, Vehicle, Workshop, FuelStation } from '../types';
 
 // --- MOCK DATA HANDLERS (Local Storage) ---
 const getLocalData = (key: string) => {
@@ -24,6 +24,115 @@ const getLocalData = (key: string) => {
 
 const setLocalData = (key: string, data: any[]) => {
     localStorage.setItem(key, JSON.stringify(data));
+};
+
+// --- DEMO DATA SEEDER ---
+export const seedDemoData = (userId: string) => {
+    const today = new Date();
+    const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+    const twoDaysAgo = new Date(today); twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+    
+    const monthKey = today.toISOString().slice(0, 7); // YYYY-MM
+    const todayStr = today.toISOString().split('T')[0];
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    const twoDaysAgoStr = twoDaysAgo.toISOString().split('T')[0];
+
+    // 1. Mock Vehicles (Ensure they exist)
+    const vehicles: Vehicle[] = [
+        { id: 'mock-vehicle-1', plate: 'AB 123 CD', code: 'TR-01', type: 'tractor' }, // Assigned
+        { id: 'mock-vehicle-2', plate: 'XY 987 ZW', code: 'TR-02', type: 'tractor' }, // Secondary
+        { id: 'mock-vehicle-3', plate: 'RIM-001', code: 'SR-01', type: 'trailer', subType: 'container' }
+    ];
+    setLocalData('mock_vehicles', vehicles);
+
+    // 2. Mock Fuel Stations (NEW)
+    const stations: FuelStation[] = [
+        { id: 'fs1', name: "Pompa Interna Hub", isPartner: true },
+        { id: 'fs2', name: "DKV Station Convenzionata", isPartner: true },
+        { id: 'fs3', name: "Eni Route Card", isPartner: true },
+        { id: 'fs4', name: "Distributore Generico", isPartner: false }
+    ];
+    setLocalData('mock_fuel_stations', stations);
+
+    // 3. Mock Stats (Multi-Vehicle)
+    // Vehicle 1 (Assigned): High mileage
+    // Vehicle 2 (Secondary): Low mileage
+    const stats: MonthlyStats[] = [
+        {
+            id: `${userId}_mock-vehicle-1_${monthKey}`,
+            userId,
+            vehicleId: 'mock-vehicle-1',
+            monthKey,
+            initialKm: 145000,
+            finalKm: 145850
+        },
+        {
+            id: `${userId}_mock-vehicle-2_${monthKey}`,
+            userId,
+            vehicleId: 'mock-vehicle-2',
+            monthKey,
+            initialKm: 80000,
+            finalKm: 80230 
+        }
+    ];
+    setLocalData('mock_stats', stats);
+
+    // 4. Mock Logs (Trips, Refuel, Maintenance)
+    const logs: AnyLog[] = [
+        // -- TRIPS --
+        // Today: Vehicle 1 (Assigned) - Container
+        {
+            id: 'trip_1', type: 'trip', userId, vehicleId: 'mock-vehicle-1',
+            date: todayStr, bollaNumber: '2024/A001', sector: 'Container',
+            departure: 'Milano Hub', destination: 'Genova Porto', details: 'Consegna Standard',
+            timestamp: today.setHours(8, 0, 0), createdAt: new Date().toISOString()
+        },
+        {
+            id: 'trip_2', type: 'trip', userId, vehicleId: 'mock-vehicle-1',
+            date: todayStr, bollaNumber: '2024/A002', sector: 'Container',
+            departure: 'Genova Porto', destination: 'Piacenza Logistica', details: 'Ritiro Merce',
+            timestamp: today.setHours(14, 0, 0), createdAt: new Date().toISOString()
+        },
+        
+        // Yesterday: Vehicle 2 (Secondary - Yellow highlight in UI) - Centina
+        {
+            id: 'trip_3', type: 'trip', userId, vehicleId: 'mock-vehicle-2',
+            date: yesterdayStr, bollaNumber: '2024/B999', sector: 'Centina',
+            departure: 'Torino Interporto', destination: 'Lione (FR)', details: 'Urgente / Espresso',
+            timestamp: yesterday.setHours(6, 30, 0), createdAt: new Date().toISOString()
+        },
+
+        // Two Days Ago: Vehicle 1 - Cisterna
+        {
+            id: 'trip_4', type: 'trip', userId, vehicleId: 'mock-vehicle-1',
+            date: twoDaysAgoStr, bollaNumber: 'CH-2024-X', sector: 'Cisterna',
+            departure: 'Verona', destination: 'Brennero', details: 'Standard',
+            timestamp: twoDaysAgo.setHours(10, 0, 0), createdAt: new Date().toISOString()
+        },
+
+        // -- REFUELS --
+        {
+            id: 'refuel_1', type: 'refuel', userId, vehicleId: 'mock-vehicle-1', subType: 'diesel',
+            stationName: 'Pompa Interna Hub', liters: 450.50, cost: 0, kmAtRefuel: 145500,
+            timestamp: today.setHours(12, 0, 0), createdAt: new Date().toISOString()
+        },
+        {
+            id: 'refuel_2', type: 'refuel', userId, vehicleId: 'mock-vehicle-2', subType: 'adblue',
+            stationName: 'Shell Torino Nord', liters: 25, cost: 30.00, kmAtRefuel: 80100,
+            timestamp: yesterday.setHours(7, 0, 0), createdAt: new Date().toISOString()
+        },
+
+        // -- MAINTENANCE --
+        {
+            id: 'maint_1', type: 'maintenance', userId, vehicleId: 'mock-vehicle-2', subType: 'tyres',
+            description: 'Pneumatici Nuovi (1° Asse)', workshop: 'Gommista Express', notes: 'Sostituzione rapida prima della partenza per la Francia',
+            kmAtMaintenance: 80000, timestamp: twoDaysAgo.setHours(16, 0, 0), createdAt: new Date().toISOString()
+        }
+    ];
+
+    setLocalData('mock_logs', logs);
+    
+    console.log("Mock DB seeded with demo data.");
 };
 
 // --- UTILS ---
@@ -262,6 +371,7 @@ export const getAllLogs = async (limitCount = 100): Promise<AnyLog[]> => {
 
 // --- STATS ---
 
+// Get stats for a specific User on a specific Vehicle for a specific Month
 export const getMonthlyStats = async (userId: string, vehicleId: string, monthKey: string): Promise<MonthlyStats | null> => {
   // Mock Mode
   if (!db) {
@@ -283,6 +393,75 @@ export const getMonthlyStats = async (userId: string, vehicleId: string, monthKe
     console.error("Error fetching monthly stats:", e);
     return null;
   }
+};
+
+// NEW: Get ALL monthly stats for a user (across all vehicles) for a month
+export const getUserMonthlyStats = async (userId: string, monthKey: string): Promise<MonthlyStats[]> => {
+    // Mock Mode
+    if (!db) {
+        const allStats = getLocalData('mock_stats');
+        return allStats.filter((s: any) => s.userId === userId && s.monthKey === monthKey);
+    }
+
+    try {
+        const q = query(
+            collection(db, 'monthlyStats'),
+            where('userId', '==', userId),
+            where('monthKey', '==', monthKey)
+        );
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MonthlyStats));
+    } catch (e) {
+        console.error("Error fetching user monthly stats:", e);
+        return [];
+    }
+};
+
+// Helper to auto-fill initial Km from previous month
+export const getPreviousMonthStats = async (userId: string, vehicleId: string, currentMonthKey: string): Promise<MonthlyStats | null> => {
+    // Calculate previous month key (e.g., "2024-02" -> "2024-01")
+    const date = new Date(currentMonthKey + "-01");
+    date.setMonth(date.getMonth() - 1);
+    const prevMonthKey = date.toISOString().slice(0, 7);
+
+    return getMonthlyStats(userId, vehicleId, prevMonthKey);
+};
+
+// Helper to get TOTAL Km driven by a user across ALL vehicles for a month
+export const getDriverMonthTotal = async (userId: string, monthKey: string): Promise<number> => {
+    // Mock Mode
+    if (!db) {
+        const allStats = getLocalData('mock_stats');
+        return allStats
+            .filter((s: any) => s.userId === userId && s.monthKey === monthKey)
+            .reduce((acc: number, curr: any) => {
+                if (curr.finalKm && curr.initialKm && curr.finalKm >= curr.initialKm) {
+                    return acc + (curr.finalKm - curr.initialKm);
+                }
+                return acc;
+            }, 0);
+    }
+
+    try {
+        const q = query(
+            collection(db, 'monthlyStats'),
+            where('userId', '==', userId),
+            where('monthKey', '==', monthKey)
+        );
+        const snapshot = await getDocs(q);
+        
+        let total = 0;
+        snapshot.forEach(doc => {
+            const data = doc.data() as MonthlyStats;
+            if (data.finalKm && data.initialKm && data.finalKm >= data.initialKm) {
+                total += (data.finalKm - data.initialKm);
+            }
+        });
+        return total;
+    } catch (e) {
+        console.error("Error calculating total driver stats:", e);
+        return 0;
+    }
 };
 
 export const saveMonthlyStats = async (stats: MonthlyStats) => {
@@ -395,9 +574,20 @@ export const deleteVehicle = async (id: string) => {
 export const batchImportVehicles = async (vehicles: Vehicle[]) => {
     // Mock Mode
     if (!db) {
+        // In Mock mode, we merge, overwriting if ID exists
         let list = await getVehicles();
-        const newItems = vehicles.map(v => ({ ...v, id: 'imp_' + Date.now() + Math.random().toString(36).substr(2, 5) }));
-        list = [...list, ...newItems];
+        
+        vehicles.forEach(v => {
+            const index = list.findIndex(existing => existing.id === v.id);
+            if (index >= 0) {
+                list[index] = v; // Update existing
+            } else {
+                // If ID is provided use it, otherwise generate one
+                const newV = { ...v, id: v.id || ('imp_' + Date.now() + Math.random().toString(36).substr(2, 5)) };
+                list.push(newV);
+            }
+        });
+        
         setLocalData('mock_vehicles', list);
         return;
     }
@@ -405,8 +595,13 @@ export const batchImportVehicles = async (vehicles: Vehicle[]) => {
     try {
         const batch = writeBatch(db);
         vehicles.forEach(v => {
-            const docRef = doc(collection(db, 'vehicles'));
-            batch.set(docRef, v);
+            // Use existing ID or auto-generate
+            const docRef = v.id ? doc(db, 'vehicles', v.id) : doc(collection(db, 'vehicles'));
+            
+            // Ensure ID is set in the data as well if we are forcing it in the docRef
+            const vehicleData = { ...v, id: docRef.id };
+            
+            batch.set(docRef, vehicleData);
         });
         await batch.commit();
     } catch (e) {
@@ -479,6 +674,69 @@ export const deleteWorkshop = async (id: string) => {
     }
 };
 
+// --- FUEL STATIONS (DISTRIBUTORI) ---
+
+export const getFuelStations = async (): Promise<FuelStation[]> => {
+    // Mock Mode
+    if (!db) {
+        const local = getLocalData('mock_fuel_stations');
+        if (local.length > 0) return local;
+
+        // Default Mock Data
+        return [
+            { id: 'fs1', name: "Pompa Interna Hub", isPartner: true },
+            { id: 'fs2', name: "DKV Station Convenzionata", isPartner: true },
+            { id: 'fs3', name: "Eni Route Card", isPartner: true },
+            { id: 'fs4', name: "Distributore Generico", isPartner: false }
+        ];
+    }
+
+    try {
+        const q = query(collection(db, 'fuelStations'), orderBy('name'));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FuelStation));
+    } catch (e) {
+        console.error("Error fetching fuel stations:", e);
+        return [];
+    }
+};
+
+export const addFuelStation = async (station: FuelStation) => {
+    // Mock Mode
+    if (!db) {
+        const list = await getFuelStations();
+        const newItem = { ...station, id: 'fs_' + Date.now() };
+        list.push(newItem);
+        setLocalData('mock_fuel_stations', list);
+        return newItem.id;
+    }
+
+    try {
+        const docRef = await addDoc(collection(db, 'fuelStations'), station);
+        return docRef.id;
+    } catch (e) {
+        console.error("Error adding fuel station:", e);
+        throw e;
+    }
+};
+
+export const deleteFuelStation = async (id: string) => {
+    // Mock Mode
+    if (!db) {
+        let list = await getFuelStations();
+        list = list.filter(w => w.id !== id);
+        setLocalData('mock_fuel_stations', list);
+        return;
+    }
+
+    try {
+        await deleteDoc(doc(db, 'fuelStations', id));
+    } catch (e) {
+        console.error("Error deleting fuel station:", e);
+        throw e;
+    }
+};
+
 // --- MASTER ACTIONS ---
 
 export const resetDatabase = async () => {
@@ -488,6 +746,7 @@ export const resetDatabase = async () => {
         localStorage.removeItem('mock_workshops');
         localStorage.removeItem('mock_vehicles');
         localStorage.removeItem('mock_users');
+        localStorage.removeItem('mock_fuel_stations');
         console.log("Mock Database Reset Complete");
         return;
     }

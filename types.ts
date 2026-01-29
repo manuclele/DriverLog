@@ -32,6 +32,12 @@ export interface Workshop {
   province: string;
 }
 
+export interface FuelStation {
+  id?: string;
+  name: string;
+  isPartner: boolean; // True = Convenzionato (Pagamento differito/Fattura)
+}
+
 export type LogType = 'trip' | 'refuel' | 'maintenance';
 
 export interface BaseLog {
@@ -70,6 +76,7 @@ export interface MaintenanceLog extends BaseLog {
   description: string;
   workshop: string;
   notes?: string;
+  kmAtMaintenance?: number; // Optional: Only for tractors
 }
 
 export interface MonthlyStats {

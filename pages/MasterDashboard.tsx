@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Shield, Hammer, Truck, Users, FileText, ChevronRight } from 'lucide-react';
+import { Shield, Hammer, Truck, Users, FileText, ChevronRight, Fuel } from 'lucide-react';
 
 const AdminCard: React.FC<{
   title: string;
@@ -53,6 +53,14 @@ export const MasterDashboard: React.FC = () => {
       <div className="space-y-2">
         <h3 className="text-sm font-bold text-slate-500 uppercase ml-1">Anagrafiche & Configurazione</h3>
         
+        <AdminCard 
+            title="Gestione Distributori"
+            desc="Pompe convenzionate e metodi pagamento."
+            icon={<Fuel size={24} />}
+            color="bg-emerald-600"
+            onClick={() => navigate('/master/fuel')}
+        />
+
         <AdminCard 
             title="Gestione Officine"
             desc="Aggiungi o rimuovi le officine autorizzate."

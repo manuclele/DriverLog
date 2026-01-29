@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { addLog, getLogs, deleteLog, updateLog } from '../services/db';
-import { ArrowLeft, Save, Camera, Euro, Droplet, Gauge, Edit2, Trash2, History, ChevronLeft, ChevronRight, Fuel, Image as ImageIcon, X, Lock } from 'lucide-react';
-import { RefuelLog } from '../types';
+import { addLog, getLogs, deleteLog, updateLog, getFuelStations } from '../services/db';
+import { ArrowLeft, Save, Camera, Euro, Droplet, Gauge, Edit2, Trash2, History, ChevronLeft, ChevronRight, Fuel, Image as ImageIcon, X, Lock, CreditCard, Building2, ChevronDown } from 'lucide-react';
+import { RefuelLog, FuelStation } from '../types';
 
 const DAYS_INITIALS = ['D', 'L', 'M', 'M', 'G', 'V', 'S']; // Domenica is 0
 const EDIT_LIMIT_MS = 24 * 60 * 60 * 1000; // 24 Hours
@@ -91,6 +91,13 @@ export const RefuelForm: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [refuelType, setRefuelType] = useState<'diesel' | 'adblue'>('diesel');
   
+  // Logic: Stations
+  const [stations, setStations] = useState<FuelStation[]>([]);
+  const [selectedStationId, setSelectedStationId] = useState<string>(''); // 'custom' or ID
+  
+  // Logic: Partnered Station (No Cost)
+  const [isPartnered, setIsPartnered] = useState(false);
+  
   // Image State
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
   const [isCompressing, setIsCompressing] = useState(false);
@@ -105,6 +112,7 @@ export const RefuelForm: React.FC = () => {
   useEffect(() => {
       if (user) {
           loadHistory();
+          loadStations();
       }
   }, [user]);
 
@@ -113,6 +121,37 @@ export const RefuelForm: React.FC = () => {
       const logs = await getLogs(user.uid, 'refuel', 50); 
       setHistory(logs as RefuelLog[]);
   };
+
+  const loadStations = async () => {
+      const data = await getFuelStations();
+      setStations(data);
+      
+      // Default Logic: If not editing, default to the first PARTNERED station found
+      // (As requested: 90% usage case)
+      if (!editingId && data.length > 0) {
+          const defaultPartner = data.find(s => s.isPartner);
+          if (defaultPartner) {
+              setSelectedStationId(defaultPartner.id!);
+              setFormData(prev => ({ ...prev, stationName: defaultPartner.name }));
+              setIsPartnered(true);
+          }
+      }
+  };
+
+  // Handle Station Selection Changes
+  useEffect(() => {
+      if (selectedStationId === 'custom') {
+          // Allow manual entry, default to NOT partner
+          setFormData(prev => ({ ...prev, stationName: '' }));
+          setIsPartnered(false);
+      } else if (selectedStationId) {
+          const station = stations.find(s => s.id === selectedStationId);
+          if (station) {
+              setFormData(prev => ({ ...prev, stationName: station.name, cost: station.isPartner ? '' : prev.cost }));
+              setIsPartnered(station.isPartner);
+          }
+      }
+  }, [selectedStationId, stations]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
@@ -155,10 +194,13 @@ export const RefuelForm: React.FC = () => {
     if (e.key === 'Enter') {
       e.preventDefault();
       const nextInput = inputRefs.current[index + 1];
-      if (nextInput) {
+      if (nextInput && !nextInput.disabled) {
         nextInput.focus();
       } else {
-        handleSubmit(e as any);
+        // Skip hidden inputs (cost if partnered)
+        const nextNextInput = inputRefs.current[index + 2];
+        if (nextNextInput) nextNextInput.focus();
+        else handleSubmit(e as any);
       }
     }
   };
@@ -192,14 +234,21 @@ export const RefuelForm: React.FC = () => {
       }
       setEditingId(log.id!);
       setRefuelType(log.subType || 'diesel');
+      
+      const isFree = log.cost === 0;
+      setIsPartnered(isFree);
+
+      // Match station logic
+      const matchedStation = stations.find(s => s.name === log.stationName);
+      setSelectedStationId(matchedStation ? matchedStation.id! : 'custom');
+
       setFormData({
           stationName: log.stationName,
           liters: log.liters.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          cost: log.cost.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          cost: isFree ? '' : log.cost.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
           kmAtRefuel: log.kmAtRefuel.toLocaleString('it-IT')
       });
       setSelectedDate(new Date(log.timestamp));
-      // Load image if exists (mock mode support)
       setReceiptImage(log.receiptData || null);
       
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -223,6 +272,9 @@ export const RefuelForm: React.FC = () => {
     const isToday = selectedDate.toDateString() === new Date().toDateString();
     const timestamp = isToday ? Date.now() : selectedDate.setHours(12, 0, 0, 0);
 
+    // If partnered, cost is 0
+    const costValue = isPartnered ? 0 : parseLocaleNumber(formData.cost);
+
     const payload = {
         type: 'refuel',
         subType: refuelType,
@@ -230,7 +282,7 @@ export const RefuelForm: React.FC = () => {
         vehicleId: currentVehicle.id,
         stationName: formData.stationName,
         liters: parseLocaleNumber(formData.liters),
-        cost: parseLocaleNumber(formData.cost),
+        cost: costValue,
         kmAtRefuel: parseLocaleNumber(formData.kmAtRefuel),
         receiptUrl: null, // Placeholder for cloud url
         receiptData: receiptImage || undefined, // Base64 data
@@ -247,7 +299,18 @@ export const RefuelForm: React.FC = () => {
           setHistory(prev => [{ id: docRef.id, ...payload, createdAt: new Date().toISOString() } as RefuelLog, ...prev]);
       }
       
-      setFormData({ ...formData, liters: '', cost: '' });
+      // Reset logic
+      const defaultPartner = stations.find(s => s.isPartner);
+      if (defaultPartner) {
+          setSelectedStationId(defaultPartner.id!); // Reset to default partner
+          setFormData({ stationName: defaultPartner.name, liters: '', cost: '', kmAtRefuel: '' });
+          setIsPartnered(true);
+      } else {
+          setSelectedStationId('custom');
+          setFormData({ stationName: '', liters: '', cost: '', kmAtRefuel: '' });
+          setIsPartnered(false);
+      }
+
       setReceiptImage(null);
       
       setTimeout(() => {
@@ -265,9 +328,12 @@ export const RefuelForm: React.FC = () => {
   const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const formatDate = (ts: number) => new Date(ts).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
+  // Filter: Current Month AND Current Vehicle
   const filteredHistory = history.filter(log => {
       const logDate = new Date(log.timestamp);
-      return logDate.getMonth() === selectedDate.getMonth() && logDate.getFullYear() === selectedDate.getFullYear();
+      const isSameMonth = logDate.getMonth() === selectedDate.getMonth() && logDate.getFullYear() === selectedDate.getFullYear();
+      const isSameVehicle = currentVehicle ? log.vehicleId === currentVehicle.id : true;
+      return isSameMonth && isSameVehicle;
   });
 
   const isDiesel = refuelType === 'diesel';
@@ -372,22 +438,57 @@ export const RefuelForm: React.FC = () => {
 
         {/* FIELDS */}
         <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4">
+            
+            {/* STATION SELECTOR */}
             <div>
                 <label className="block text-sm font-semibold text-slate-500 mb-1">Distributore</label>
-                <input
-                    ref={el => { if (el) inputRefs.current[0] = el; }}
-                    type="text"
-                    name="stationName"
-                    required
-                    autoCapitalize="words"
-                    placeholder="Es. Eni Station - Km 44"
-                    value={formData.stationName}
-                    onChange={handleChange}
-                    onKeyDown={(e) => handleKeyDown(e, 0)}
-                    enterKeyHint="next"
-                    className={`w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-lg focus:ring-2 outline-none ${ringColor}`}
-                />
+                <div className="relative">
+                    <select
+                        value={selectedStationId}
+                        onChange={(e) => setSelectedStationId(e.target.value)}
+                        className={`w-full p-4 pl-12 pr-10 appearance-none bg-slate-50 border border-slate-200 rounded-lg text-lg font-bold text-slate-800 outline-none focus:ring-2 ${ringColor}`}
+                    >
+                        {stations.filter(s => s.isPartner).length > 0 && (
+                            <optgroup label="Convenzionati">
+                                {stations.filter(s => s.isPartner).map(s => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                ))}
+                            </optgroup>
+                        )}
+                         {stations.filter(s => !s.isPartner).length > 0 && (
+                            <optgroup label="Altri Salvati">
+                                {stations.filter(s => !s.isPartner).map(s => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                ))}
+                            </optgroup>
+                        )}
+                        <option value="custom" className="text-blue-600 font-bold">+ Altro Distributore...</option>
+                    </select>
+                    <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={20} />
+                </div>
             </div>
+
+            {/* CUSTOM STATION NAME INPUT (Only if selectedStationId is 'custom') */}
+            {selectedStationId === 'custom' && (
+                <div className="animate-fade-in-down">
+                    <label className="block text-sm font-semibold text-slate-500 mb-1">Nome Distributore (Manuale)</label>
+                    <input
+                        ref={el => { if (el) inputRefs.current[0] = el; }}
+                        type="text"
+                        name="stationName"
+                        required
+                        autoCapitalize="words"
+                        placeholder="Es. Eni Station - Km 44"
+                        value={formData.stationName}
+                        onChange={handleChange}
+                        onKeyDown={(e) => handleKeyDown(e, 0)}
+                        enterKeyHint="next"
+                        className={`w-full p-4 bg-white border-2 border-slate-300 rounded-lg text-lg focus:ring-2 outline-none ${ringColor}`}
+                    />
+                </div>
+            )}
+            
         </div>
 
         <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4">
@@ -411,25 +512,26 @@ export const RefuelForm: React.FC = () => {
                 </div>
             </div>
 
-            <div className="relative">
-                <label className="block text-sm font-semibold text-slate-500 mb-1">Importo (€)</label>
-                <div className="relative">
-                    <Euro className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                    <input
-                        ref={el => { if (el) inputRefs.current[2] = el; }}
-                        type="text"
-                        inputMode="decimal"
-                        name="cost"
-                        required
-                        placeholder="0,00"
-                        value={formData.cost}
-                        onChange={handleChange}
-                        onKeyDown={(e) => handleKeyDown(e, 2)}
-                        enterKeyHint="next"
-                        className={`w-full pl-12 p-4 bg-slate-50 border border-slate-200 rounded-lg text-xl font-mono focus:ring-2 outline-none ${ringColor}`}
-                    />
+            {!isPartnered && (
+                <div className="relative animate-fade-in-down">
+                    <label className="block text-sm font-semibold text-slate-500 mb-1">Importo (€)</label>
+                    <div className="relative">
+                        <Euro className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                        <input
+                            ref={el => { if (el) inputRefs.current[2] = el; }}
+                            type="text"
+                            inputMode="decimal"
+                            name="cost"
+                            placeholder="0,00"
+                            value={formData.cost}
+                            onChange={handleChange}
+                            onKeyDown={(e) => handleKeyDown(e, 2)}
+                            enterKeyHint="next"
+                            className={`w-full pl-12 p-4 bg-slate-50 border border-slate-200 rounded-lg text-xl font-mono focus:ring-2 outline-none ${ringColor}`}
+                        />
+                    </div>
                 </div>
-            </div>
+            )}
             
              <div className="relative">
                 <label className="block text-sm font-semibold text-slate-500 mb-1">Km Totali Attuali</label>
@@ -512,7 +614,7 @@ export const RefuelForm: React.FC = () => {
         {editingId && (
             <button 
                 type="button" 
-                onClick={() => { setEditingId(null); setFormData({ stationName: '', liters: '', cost: '', kmAtRefuel: '' }); setReceiptImage(null); }}
+                onClick={() => { setEditingId(null); setFormData({ stationName: '', liters: '', cost: '', kmAtRefuel: '' }); setReceiptImage(null); setIsPartnered(false); }}
                 className="w-full py-2 text-slate-500 text-sm underline"
             >
                 Annulla Modifica
@@ -530,7 +632,7 @@ export const RefuelForm: React.FC = () => {
 
           {filteredHistory.length === 0 ? (
               <div className="text-center py-8 text-slate-400 italic bg-white rounded-xl border border-dashed border-slate-300">
-                  Nessun rifornimento in {monthName}
+                  Nessun rifornimento per il veicolo corrente in {monthName}
               </div>
           ) : (
               <div className="space-y-3">
@@ -538,6 +640,7 @@ export const RefuelForm: React.FC = () => {
                       const isRefuelDiesel = !refuel.subType || refuel.subType === 'diesel';
                       const badgeColor = isRefuelDiesel ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800';
                       const editable = canEdit(refuel);
+                      const isInvoice = refuel.cost === 0;
 
                       return (
                           <div key={refuel.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col gap-2 relative">
@@ -560,9 +663,13 @@ export const RefuelForm: React.FC = () => {
                                     <div className={`px-2 py-1 rounded-md font-bold text-sm ${isRefuelDiesel ? 'bg-emerald-50 text-emerald-800' : 'bg-blue-50 text-blue-800'}`}>
                                         {refuel.liters.toLocaleString('it-IT', { minimumFractionDigits: 2 })} L
                                     </div>
-                                    <div className="bg-slate-100 px-2 py-1 rounded-md text-slate-700 font-bold text-sm">
-                                        € {refuel.cost.toLocaleString('it-IT', { minimumFractionDigits: 2 })}
-                                    </div>
+                                    
+                                    {!isInvoice && (
+                                        <div className="bg-slate-100 px-2 py-1 rounded-md text-slate-700 font-bold text-sm">
+                                            € {refuel.cost.toLocaleString('it-IT', { minimumFractionDigits: 2 })}
+                                        </div>
+                                    )}
+
                                     <div className="text-slate-400 text-sm flex items-center">
                                         {refuel.kmAtRefuel.toLocaleString('it-IT')} km
                                     </div>
