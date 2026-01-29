@@ -14,11 +14,16 @@ export interface UserProfile {
   assignedSector: SectorType;
 }
 
+export type VehicleType = 'tractor' | 'trailer'; // Motrice o Rimorchio
+export type TrailerSubType = 'container' | 'centina' | 'cisterna' | null;
+
 export interface Vehicle {
   id: string;
   plate: string;
   code: string;
-  lastKm: number;
+  type: VehicleType;
+  subType?: TrailerSubType; // Only for trailers
+  defaultTrailerId?: string; // Only for tractors (Default pairing)
 }
 
 export interface Workshop {

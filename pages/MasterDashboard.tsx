@@ -62,11 +62,11 @@ export const MasterDashboard: React.FC = () => {
         />
 
         <AdminCard 
-            title="Gestione Veicoli"
-            desc="Configura la flotta e i km iniziali."
+            title="Gestione Flotta"
+            desc="Motrici, Rimorchi e Importazione."
             icon={<Truck size={24} />}
             color="bg-blue-600"
-            onClick={() => alert('Work in progress: Gestione Veicoli')}
+            onClick={() => navigate('/master/vehicles')}
         />
 
         <AdminCard 

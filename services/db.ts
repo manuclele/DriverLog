@@ -317,14 +317,14 @@ export const saveMonthlyStats = async (stats: MonthlyStats) => {
 export const getVehicles = async (): Promise<Vehicle[]> => {
     // Mock Mode
     if (!db) {
-        // Return defaults if nothing in local storage yet
         const local = getLocalData('mock_vehicles');
         if (local.length > 0) return local;
 
         return [
-            { id: 'mock-vehicle-1', plate: 'AB 123 CD', code: 'TR-01', lastKm: 120000 },
-            { id: 'mock-vehicle-2', plate: 'XY 987 ZW', code: 'TR-02', lastKm: 250000 },
-            { id: 'mock-vehicle-3', plate: 'EF 456 GH', code: 'TR-03', lastKm: 85000 }
+            { id: 'mock-vehicle-1', plate: 'AB 123 CD', code: 'TR-01', type: 'tractor' },
+            { id: 'mock-vehicle-2', plate: 'XY 987 ZW', code: 'TR-02', type: 'tractor' },
+            { id: 'mock-vehicle-3', plate: 'RIM-001', code: 'SR-01', type: 'trailer', subType: 'container' },
+            { id: 'mock-vehicle-4', plate: 'RIM-002', code: 'SR-02', type: 'trailer', subType: 'centina' }
         ];
     }
 
@@ -335,6 +335,83 @@ export const getVehicles = async (): Promise<Vehicle[]> => {
     } catch (e) {
         console.error("Error fetching vehicles:", e);
         return [];
+    }
+};
+
+export const addVehicle = async (vehicle: Vehicle) => {
+    // Mock Mode
+    if (!db) {
+        const list = await getVehicles();
+        const newItem = { ...vehicle, id: 'v_' + Date.now() + Math.random().toString(36).substr(2, 5) };
+        list.push(newItem);
+        setLocalData('mock_vehicles', list);
+        return newItem.id;
+    }
+
+    try {
+        const docRef = await addDoc(collection(db, 'vehicles'), vehicle);
+        return docRef.id;
+    } catch (e) {
+        console.error("Error adding vehicle:", e);
+        throw e;
+    }
+};
+
+export const updateVehicle = async (id: string, data: Partial<Vehicle>) => {
+    // Mock Mode
+    if (!db) {
+        let list = await getVehicles();
+        list = list.map(v => v.id === id ? { ...v, ...data } : v);
+        setLocalData('mock_vehicles', list);
+        return;
+    }
+
+    try {
+        const docRef = doc(db, 'vehicles', id);
+        await updateDoc(docRef, data);
+    } catch (e) {
+        console.error("Error updating vehicle:", e);
+        throw e;
+    }
+};
+
+export const deleteVehicle = async (id: string) => {
+    // Mock Mode
+    if (!db) {
+        let list = await getVehicles();
+        list = list.filter(v => v.id !== id);
+        setLocalData('mock_vehicles', list);
+        return;
+    }
+
+    try {
+        await deleteDoc(doc(db, 'vehicles', id));
+    } catch (e) {
+        console.error("Error deleting vehicle:", e);
+        throw e;
+    }
+};
+
+export const batchImportVehicles = async (vehicles: Vehicle[]) => {
+    // Mock Mode
+    if (!db) {
+        let list = await getVehicles();
+        const newItems = vehicles.map(v => ({ ...v, id: 'imp_' + Date.now() + Math.random().toString(36).substr(2, 5) }));
+        list = [...list, ...newItems];
+        setLocalData('mock_vehicles', list);
+        return;
+    }
+
+    try {
+        const batch = writeBatch(db);
+        vehicles.forEach(v => {
+            const docRef = doc(collection(db, 'vehicles'));
+            batch.set(docRef, v);
+        });
+        await batch.commit();
+    } catch (e) {
+        console.error("Error batch importing vehicles:", e);
+        throw e;
     }
 };
 

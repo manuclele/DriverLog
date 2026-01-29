@@ -120,11 +120,11 @@ export const Login: React.FC = () => {
         <Truck size={48} />
       </div>
       <h1 className="text-3xl font-bold mb-1">DriverLog</h1>
-      <p className="text-slate-400 mb-8 text-center max-w-xs text-sm">
+      <p className="text-slate-400 mb-6 text-center max-w-xs text-sm">
         Gestione flotta e viaggi semplificata.
       </p>
 
-      <div className="w-full max-w-sm space-y-4">
+      <div className="w-full max-w-sm space-y-4 pb-10">
         
         {/* EMAIL FORM */}
         <form onSubmit={handleEmailAuth} className="bg-white p-5 rounded-xl shadow-lg space-y-3 animate-fade-in-up">
@@ -209,14 +209,38 @@ export const Login: React.FC = () => {
             Accedi con Google
         </button>
 
-        <div className="pt-8">
+        {/* DEMO SECTION */}
+        <div className="pt-6 space-y-3">
+            <div className="text-center">
+                <span className="text-xs font-bold text-slate-500 uppercase">Accesso Rapido Demo</span>
+            </div>
+            
             <button
                 onClick={() => demoLogin('driver')}
-                className="w-full text-slate-500 text-xs hover:text-white transition-colors flex items-center justify-center gap-1"
+                className="w-full bg-slate-800 text-slate-200 p-3 rounded-xl font-semibold text-sm border border-slate-700 hover:bg-slate-700 transition-colors flex items-center justify-center gap-2"
             >
-                Entra in modalità Demo <ChevronRight size={12} />
+                <Truck size={16} />
+                Demo Autista
             </button>
+            
+            <div className="grid grid-cols-2 gap-3">
+                <button
+                    onClick={() => demoLogin('master')}
+                    className="w-full bg-slate-800 text-indigo-300 p-3 rounded-xl font-semibold text-sm border border-slate-700 hover:bg-slate-700 transition-colors flex items-center justify-center gap-2"
+                >
+                    <Shield size={16} />
+                    Demo Master
+                </button>
+                <button
+                    onClick={() => demoLogin('owner')}
+                    className="w-full bg-slate-800 text-emerald-300 p-3 rounded-xl font-semibold text-sm border border-slate-700 hover:bg-slate-700 transition-colors flex items-center justify-center gap-2"
+                >
+                    <Briefcase size={16} />
+                    Demo Owner
+                </button>
+            </div>
         </div>
+
       </div>
     </div>
   );
