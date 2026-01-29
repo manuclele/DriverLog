@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { addLog, getLogs, deleteLog, updateLog } from '../services/db';
-import { ArrowLeft, Save, Wrench, Disc, Edit2, Trash2, History, ChevronLeft, ChevronRight, AlertTriangle, Hammer, ChevronDown, FileText, Info } from 'lucide-react';
+import { ArrowLeft, Save, Wrench, Disc, Edit2, Trash2, History, ChevronLeft, ChevronRight, AlertTriangle, Hammer, ChevronDown, FileText, Info, Lock } from 'lucide-react';
 import { MaintenanceLog } from '../types';
 
 const DAYS_INITIALS = ['D', 'L', 'M', 'M', 'G', 'V', 'S'];
+const EDIT_LIMIT_MS = 24 * 60 * 60 * 1000; // 24 Hours
 
 // --- STATIC DATA CONFIGURATION ---
 
@@ -135,7 +136,17 @@ export const MaintenanceForm: React.FC = () => {
     return dates;
   };
 
+  const canEdit = (log: MaintenanceLog) => {
+      if (user?.role === 'master') return true;
+      const createdAt = new Date(log.createdAt).getTime();
+      return (Date.now() - createdAt) < EDIT_LIMIT_MS;
+  };
+
   const handleEdit = (log: MaintenanceLog) => {
+      if (!canEdit(log)) {
+          alert("Tempo massimo per le modifiche scaduto (24h). Contatta il Master.");
+          return;
+      }
       setEditingId(log.id!);
       setMaintType(log.subType);
       setTargetVehicleId(log.vehicleId);
@@ -159,7 +170,8 @@ export const MaintenanceForm: React.FC = () => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, log: MaintenanceLog) => {
+      if (!canEdit(log)) return;
       if (!confirm("Eliminare questa registrazione?")) return;
       await deleteLog('logs', id);
       setHistory(prev => prev.filter(item => item.id !== id));
@@ -519,6 +531,7 @@ export const MaintenanceForm: React.FC = () => {
                       const isLogMechanic = log.subType === 'mechanic';
                       const badgeColor = isLogMechanic ? 'bg-orange-100 text-orange-800' : 'bg-slate-200 text-slate-800';
                       const vehicle = availableVehicles.find(v => v.id === log.vehicleId);
+                      const editable = canEdit(log);
 
                       return (
                           <div key={log.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col gap-2 relative">
@@ -553,18 +566,26 @@ export const MaintenanceForm: React.FC = () => {
                               )}
 
                               <div className="flex justify-end gap-3 mt-2 border-t border-slate-50 pt-2">
-                                  <button 
-                                    onClick={() => handleEdit(log)} 
-                                    className="flex items-center gap-1 text-xs font-bold text-blue-600 px-3 py-1.5 bg-blue-50 rounded-lg hover:bg-blue-100"
-                                  >
-                                      <Edit2 size={12} /> MODIFICA
-                                  </button>
-                                  <button 
-                                    onClick={() => handleDelete(log.id!)} 
-                                    className="flex items-center gap-1 text-xs font-bold text-red-600 px-3 py-1.5 bg-red-50 rounded-lg hover:bg-red-100"
-                                  >
-                                      <Trash2 size={12} /> ELIMINA
-                                  </button>
+                                  {editable ? (
+                                    <>
+                                      <button 
+                                        onClick={() => handleEdit(log)} 
+                                        className="flex items-center gap-1 text-xs font-bold text-blue-600 px-3 py-1.5 bg-blue-50 rounded-lg hover:bg-blue-100"
+                                      >
+                                          <Edit2 size={12} /> MODIFICA
+                                      </button>
+                                      <button 
+                                        onClick={() => handleDelete(log.id!, log)} 
+                                        className="flex items-center gap-1 text-xs font-bold text-red-600 px-3 py-1.5 bg-red-50 rounded-lg hover:bg-red-100"
+                                      >
+                                          <Trash2 size={12} /> ELIMINA
+                                      </button>
+                                    </>
+                                  ) : (
+                                      <span className="flex items-center gap-1 text-[10px] text-slate-400 bg-slate-100 px-2 py-1 rounded">
+                                          <Lock size={10} /> BLOCCATO (24h)
+                                      </span>
+                                  )}
                               </div>
                           </div>
                       );

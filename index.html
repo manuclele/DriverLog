@@ -26,6 +26,13 @@
       input[type=number] {
         -moz-appearance: textfield;
       }
+
+      /* Prevent Printing of Data */
+      @media print {
+        body {
+            display: none;
+        }
+      }
     </style>
   <script type="importmap">
 {

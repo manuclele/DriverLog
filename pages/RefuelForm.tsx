@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { addLog, getLogs, deleteLog, updateLog } from '../services/db';
-import { ArrowLeft, Save, Camera, Euro, Droplet, Gauge, Edit2, Trash2, History, ChevronLeft, ChevronRight, Fuel, Image as ImageIcon, X } from 'lucide-react';
+import { ArrowLeft, Save, Camera, Euro, Droplet, Gauge, Edit2, Trash2, History, ChevronLeft, ChevronRight, Fuel, Image as ImageIcon, X, Lock } from 'lucide-react';
 import { RefuelLog } from '../types';
 
 const DAYS_INITIALS = ['D', 'L', 'M', 'M', 'G', 'V', 'S']; // Domenica is 0
+const EDIT_LIMIT_MS = 24 * 60 * 60 * 1000; // 24 Hours
 
 // Helper to format currency/liters while typing: "1.200,50"
 const formatDecimalInput = (value: string): string => {
@@ -178,7 +179,17 @@ export const RefuelForm: React.FC = () => {
     return dates;
   };
 
+  const canEdit = (log: RefuelLog) => {
+      if (user?.role === 'master') return true;
+      const createdAt = new Date(log.createdAt).getTime();
+      return (Date.now() - createdAt) < EDIT_LIMIT_MS;
+  };
+
   const handleEdit = (log: RefuelLog) => {
+      if (!canEdit(log)) {
+          alert("Tempo massimo per le modifiche scaduto (24h). Contatta il Master.");
+          return;
+      }
       setEditingId(log.id!);
       setRefuelType(log.subType || 'diesel');
       setFormData({
@@ -194,7 +205,8 @@ export const RefuelForm: React.FC = () => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, log: RefuelLog) => {
+      if (!canEdit(log)) return;
       if (!confirm("Eliminare questo rifornimento?")) return;
       await deleteLog('logs', id);
       setHistory(prev => prev.filter(item => item.id !== id));
@@ -525,6 +537,7 @@ export const RefuelForm: React.FC = () => {
                   {filteredHistory.map(refuel => {
                       const isRefuelDiesel = !refuel.subType || refuel.subType === 'diesel';
                       const badgeColor = isRefuelDiesel ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800';
+                      const editable = canEdit(refuel);
 
                       return (
                           <div key={refuel.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col gap-2 relative">
@@ -557,18 +570,26 @@ export const RefuelForm: React.FC = () => {
 
                               {/* Actions */}
                               <div className="flex justify-end gap-3 mt-2 border-t border-slate-50 pt-2">
-                                  <button 
-                                    onClick={() => handleEdit(refuel)} 
-                                    className="flex items-center gap-1 text-xs font-bold text-blue-600 px-3 py-1.5 bg-blue-50 rounded-lg hover:bg-blue-100"
-                                  >
-                                      <Edit2 size={12} /> MODIFICA
-                                  </button>
-                                  <button 
-                                    onClick={() => handleDelete(refuel.id!)} 
-                                    className="flex items-center gap-1 text-xs font-bold text-red-600 px-3 py-1.5 bg-red-50 rounded-lg hover:bg-red-100"
-                                  >
-                                      <Trash2 size={12} /> ELIMINA
-                                  </button>
+                                  {editable ? (
+                                    <>
+                                      <button 
+                                        onClick={() => handleEdit(refuel)} 
+                                        className="flex items-center gap-1 text-xs font-bold text-blue-600 px-3 py-1.5 bg-blue-50 rounded-lg hover:bg-blue-100"
+                                      >
+                                          <Edit2 size={12} /> MODIFICA
+                                      </button>
+                                      <button 
+                                        onClick={() => handleDelete(refuel.id!, refuel)} 
+                                        className="flex items-center gap-1 text-xs font-bold text-red-600 px-3 py-1.5 bg-red-50 rounded-lg hover:bg-red-100"
+                                      >
+                                          <Trash2 size={12} /> ELIMINA
+                                      </button>
+                                    </>
+                                  ) : (
+                                      <span className="flex items-center gap-1 text-[10px] text-slate-400 bg-slate-100 px-2 py-1 rounded">
+                                          <Lock size={10} /> BLOCCATO (24h)
+                                      </span>
+                                  )}
                               </div>
                           </div>
                       );

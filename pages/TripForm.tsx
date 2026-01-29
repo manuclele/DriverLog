@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { addLog, getLogs, deleteLog, updateLog } from '../services/db';
-import { ArrowLeft, ChevronRight, Save, AlertTriangle, ChevronLeft, Trash2, Edit2, Calendar } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Save, AlertTriangle, ChevronLeft, Trash2, Edit2, Calendar, Lock } from 'lucide-react';
 import { SectorType, TripLog } from '../types';
 
 const SECTORS: SectorType[] = ['Cisterna', 'Container', 'Centina'];
 const DAYS_INITIALS = ['D', 'L', 'M', 'M', 'G', 'V', 'S']; // Domenica is 0
+const EDIT_LIMIT_MS = 24 * 60 * 60 * 1000; // 24 Hours
 
 // Helper: Capitalize first letter of every word
 const toTitleCase = (str: string) => {
@@ -109,7 +110,17 @@ export const TripForm: React.FC = () => {
 
   // --- CRUD ACTIONS ---
 
+  const canEdit = (log: TripLog) => {
+      if (user?.role === 'master') return true;
+      const createdAt = new Date(log.createdAt).getTime();
+      return (Date.now() - createdAt) < EDIT_LIMIT_MS;
+  };
+
   const handleEdit = (log: TripLog) => {
+      if (!canEdit(log)) {
+          alert("Tempo massimo per le modifiche scaduto (24h). Contatta il Master.");
+          return;
+      }
       setEditingId(log.id!);
       setFormData({
           bollaNumber: log.bollaNumber,
@@ -122,7 +133,8 @@ export const TripForm: React.FC = () => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, log: TripLog) => {
+      if (!canEdit(log)) return;
       if (!confirm("Sei sicuro di voler eliminare questo viaggio?")) return;
       await deleteLog('logs', id);
       // Remove from local state immediately for speed
@@ -400,7 +412,9 @@ export const TripForm: React.FC = () => {
               </div>
           ) : (
               <div className="space-y-3">
-                  {filteredHistory.map(trip => (
+                  {filteredHistory.map(trip => {
+                      const editable = canEdit(trip);
+                      return (
                       <div key={trip.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col gap-2 relative group">
                           {/* Row 1: Header */}
                           <div className="flex justify-between items-start">
@@ -426,21 +440,29 @@ export const TripForm: React.FC = () => {
 
                           {/* Row 3: Actions */}
                           <div className="flex justify-end gap-3 mt-2 border-t border-slate-50 pt-2">
-                              <button 
-                                onClick={() => handleEdit(trip)} 
-                                className="flex items-center gap-1 text-xs font-bold text-blue-600 px-3 py-1.5 bg-blue-50 rounded-lg hover:bg-blue-100"
-                              >
-                                  <Edit2 size={12} /> MODIFICA
-                              </button>
-                              <button 
-                                onClick={() => handleDelete(trip.id!)} 
-                                className="flex items-center gap-1 text-xs font-bold text-red-600 px-3 py-1.5 bg-red-50 rounded-lg hover:bg-red-100"
-                              >
-                                  <Trash2 size={12} /> ELIMINA
-                              </button>
+                              {editable ? (
+                                <>
+                                  <button 
+                                    onClick={() => handleEdit(trip)} 
+                                    className="flex items-center gap-1 text-xs font-bold text-blue-600 px-3 py-1.5 bg-blue-50 rounded-lg hover:bg-blue-100"
+                                  >
+                                      <Edit2 size={12} /> MODIFICA
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDelete(trip.id!, trip)} 
+                                    className="flex items-center gap-1 text-xs font-bold text-red-600 px-3 py-1.5 bg-red-50 rounded-lg hover:bg-red-100"
+                                  >
+                                      <Trash2 size={12} /> ELIMINA
+                                  </button>
+                                </>
+                              ) : (
+                                  <span className="flex items-center gap-1 text-[10px] text-slate-400 bg-slate-100 px-2 py-1 rounded">
+                                      <Lock size={10} /> BLOCCATO (24h)
+                                  </span>
+                              )}
                           </div>
                       </div>
-                  ))}
+                  )})}
               </div>
           )}
       </div>

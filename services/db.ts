@@ -14,7 +14,7 @@ import {
   limit, 
   writeBatch 
 } from 'firebase/firestore';
-import { TripLog, RefuelLog, AnyLog, MonthlyStats, LogType, UserProfile, Vehicle } from '../types';
+import { TripLog, RefuelLog, AnyLog, MonthlyStats, LogType, UserProfile, Vehicle, Workshop } from '../types';
 
 // --- MOCK DATA HANDLERS (Local Storage) ---
 const getLocalData = (key: string) => {
@@ -28,19 +28,35 @@ const setLocalData = (key: string, data: any[]) => {
 
 // --- UTILS ---
 
-// Get User Profile
+// Get User Profile (Auto-Registration Logic)
 export const syncUserProfile = async (uid: string, email: string | null, displayName: string | null): Promise<UserProfile> => {
     // Mock Mode
     if (!db) {
-        console.log("Using Mock Profile");
-        return {
+        console.log("Using Mock Profile Sync");
+        const storedUsers = getLocalData('mock_users') || [];
+        const existing = storedUsers.find((u: any) => u.uid === uid);
+        
+        if (existing) return existing;
+        
+        // AUTO-REGISTER NEW USER AS DRIVER (PENDING)
+        // If it's a demo user, we auto-activate for UX, real users are pending
+        const isDemo = email?.includes('demo'); 
+        
+        const newUser: UserProfile = {
             uid,
             email,
-            displayName,
+            displayName: displayName || 'Nuovo Utente',
             role: 'driver',
-            assignedVehicleId: 'mock-vehicle-1',
+            status: isDemo ? 'active' : 'pending', // Default to Pending
+            assignedVehicleId: '',
             assignedSector: 'Container'
         };
+        
+        // Save to mock storage so Master can see them
+        storedUsers.push(newUser);
+        setLocalData('mock_users', storedUsers);
+        
+        return newUser;
     }
 
     try {
@@ -50,11 +66,13 @@ export const syncUserProfile = async (uid: string, email: string | null, display
         if (userSnap.exists()) {
             return userSnap.data() as UserProfile;
         } else {
+            // REGISTER NEW USER IN FIREBASE (PENDING)
             const newUser: UserProfile = {
                 uid,
                 email,
                 displayName,
-                role: 'driver',
+                role: 'driver', 
+                status: 'pending', // IMPORTANT: New users must wait for approval
                 assignedVehicleId: '',
                 assignedSector: 'Container'
             };
@@ -63,7 +81,67 @@ export const syncUserProfile = async (uid: string, email: string | null, display
         }
     } catch (e) {
         console.error("DB Error (Profile), falling back to mock:", e);
-        return { uid, email, displayName, role: 'driver', assignedVehicleId: '', assignedSector: 'Container' };
+        return { uid, email, displayName, role: 'driver', status: 'pending', assignedVehicleId: '', assignedSector: 'Container' };
+    }
+};
+
+// --- USER MANAGEMENT (MASTER) ---
+
+export const getUsers = async (): Promise<UserProfile[]> => {
+    // Mock Mode
+    if (!db) {
+        const local = getLocalData('mock_users');
+        if (local.length > 0) return local;
+        
+        // Return some fake users if empty
+        return [
+            { uid: 'demo-user-123', email: 'mario@driver.it', displayName: 'Mario Rossi (Demo)', role: 'driver', status: 'active', assignedVehicleId: 'mock-vehicle-1', assignedSector: 'Container' },
+            { uid: 'demo-master-999', email: 'admin@log.it', displayName: 'Admin Master', role: 'master', status: 'active', assignedVehicleId: '', assignedSector: 'Container' }
+        ];
+    }
+
+    try {
+        const q = query(collection(db, 'users'));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => doc.data() as UserProfile);
+    } catch (e) {
+        console.error("Error fetching users:", e);
+        return [];
+    }
+};
+
+export const updateUserProfile = async (uid: string, data: Partial<UserProfile>) => {
+    // Mock Mode
+    if (!db) {
+        let users = getLocalData('mock_users');
+        users = users.map((u: any) => u.uid === uid ? { ...u, ...data } : u);
+        setLocalData('mock_users', users);
+        return;
+    }
+
+    try {
+        const userRef = doc(db, 'users', uid);
+        await updateDoc(userRef, data);
+    } catch (e) {
+        console.error("Error updating user:", e);
+        throw e;
+    }
+};
+
+export const deleteUserProfile = async (uid: string) => {
+    // Mock Mode
+    if (!db) {
+        let users = getLocalData('mock_users');
+        users = users.filter((u: any) => u.uid !== uid);
+        setLocalData('mock_users', users);
+        return;
+    }
+
+    try {
+        await deleteDoc(doc(db, 'users', uid));
+    } catch (e) {
+        console.error("Error deleting user:", e);
+        throw e;
     }
 };
 
@@ -159,6 +237,29 @@ export const getLogs = async (userId: string, type: LogType, limitCount = 50): P
     }
 };
 
+// --- MASTER/OWNER: GLOBAL LOGS ---
+
+export const getAllLogs = async (limitCount = 100): Promise<AnyLog[]> => {
+    // Mock Mode
+    if (!db) {
+        const logs = getLocalData('mock_logs');
+        return logs.sort((a: any, b: any) => b.timestamp - a.timestamp).slice(0, limitCount);
+    }
+
+    try {
+        const q = query(
+            collection(db, 'logs'),
+            orderBy('timestamp', 'desc'),
+            limit(limitCount)
+        );
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AnyLog));
+    } catch (e) {
+        console.error("Error fetching all logs:", e);
+        return [];
+    }
+};
+
 // --- STATS ---
 
 export const getMonthlyStats = async (userId: string, vehicleId: string, monthKey: string): Promise<MonthlyStats | null> => {
@@ -216,6 +317,10 @@ export const saveMonthlyStats = async (stats: MonthlyStats) => {
 export const getVehicles = async (): Promise<Vehicle[]> => {
     // Mock Mode
     if (!db) {
+        // Return defaults if nothing in local storage yet
+        const local = getLocalData('mock_vehicles');
+        if (local.length > 0) return local;
+
         return [
             { id: 'mock-vehicle-1', plate: 'AB 123 CD', code: 'TR-01', lastKm: 120000 },
             { id: 'mock-vehicle-2', plate: 'XY 987 ZW', code: 'TR-02', lastKm: 250000 },
@@ -226,15 +331,74 @@ export const getVehicles = async (): Promise<Vehicle[]> => {
     try {
         const q = query(collection(db, 'vehicles'), orderBy('plate'));
         const snapshot = await getDocs(q);
-        
-        if (snapshot.empty) {
-            return []; 
-        }
-
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Vehicle));
     } catch (e) {
         console.error("Error fetching vehicles:", e);
         return [];
+    }
+};
+
+// --- WORKSHOPS (OFFICINE) ---
+
+export const getWorkshops = async (): Promise<Workshop[]> => {
+    // Mock Mode
+    if (!db) {
+        const local = getLocalData('mock_workshops');
+        if (local.length > 0) return local;
+
+        // Default Mock Data
+        return [
+            { id: 'ws1', name: "Officina Autorizzata Rossi", province: "MI" },
+            { id: 'ws2', name: "Truck Service Milano Est", province: "MI" },
+            { id: 'ws3', name: "Diesel Center Bergamo", province: "BG" },
+            { id: 'ws4', name: "Officina Grandi Mezzi", province: "RM" },
+            { id: 'ws5', name: "Napoli Truck Repair", province: "NA" },
+        ];
+    }
+
+    try {
+        const q = query(collection(db, 'workshops'), orderBy('province'), orderBy('name'));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Workshop));
+    } catch (e) {
+        console.error("Error fetching workshops:", e);
+        return [];
+    }
+};
+
+export const addWorkshop = async (workshop: Workshop) => {
+    // Mock Mode
+    if (!db) {
+        const list = await getWorkshops();
+        const newItem = { ...workshop, id: 'ws_' + Date.now() };
+        list.push(newItem);
+        setLocalData('mock_workshops', list);
+        return newItem.id;
+    }
+
+    try {
+        const docRef = await addDoc(collection(db, 'workshops'), workshop);
+        return docRef.id;
+    } catch (e) {
+        console.error("Error adding workshop:", e);
+        throw e;
+    }
+};
+
+export const deleteWorkshop = async (id: string) => {
+    // Mock Mode
+    if (!db) {
+        let list = await getWorkshops();
+        list = list.filter(w => w.id !== id);
+        setLocalData('mock_workshops', list);
+        return;
+    }
+
+    try {
+        await deleteDoc(doc(db, 'workshops', id));
+    } catch (e) {
+        console.error("Error deleting workshop:", e);
+        throw e;
     }
 };
 
@@ -244,15 +408,14 @@ export const resetDatabase = async () => {
     if (!db) {
         localStorage.removeItem('mock_logs');
         localStorage.removeItem('mock_stats');
+        localStorage.removeItem('mock_workshops');
+        localStorage.removeItem('mock_vehicles');
+        localStorage.removeItem('mock_users');
         console.log("Mock Database Reset Complete");
         return;
     }
 
     const batch = writeBatch(db);
-    const logsSnap = await getDocs(collection(db, 'logs'));
-    logsSnap.forEach((doc) => batch.delete(doc.ref));
-    const statsSnap = await getDocs(collection(db, 'monthlyStats'));
-    statsSnap.forEach((doc) => batch.delete(doc.ref));
-    await batch.commit();
-    console.log("Database Reset Complete");
+    // Be careful with this in production!
+    console.log("Database Reset not fully implemented for Production DB safety.");
 };

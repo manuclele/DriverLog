@@ -1,13 +1,18 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth, googleProvider } from '../services/firebase';
-// import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth'; // Removed due to import errors
+// MOCK FIREBASE AUTH FUNCTIONS
+// The environment does not support firebase/auth module imports correctly.
+// We provide stubs here which will not be executed because 'auth' is null in Mock Mode.
+
+const signInWithPopup = async (auth: any, provider: any) => { console.warn("Mock signInWithPopup"); };
+const signOut = async (auth: any) => { console.warn("Mock signOut"); };
+const onAuthStateChanged = (auth: any, nextOrObserver: any) => { return () => {}; };
+const createUserWithEmailAndPassword = async (auth: any, email: string, pass: string) => { return { user: { uid: 'mock-uid', email } as any }; };
+const signInWithEmailAndPassword = async (auth: any, email: string, pass: string) => { console.warn("Mock signInWithEmail"); };
+const updateProfile = async (user: any, profile: any) => { console.warn("Mock updateProfile"); };
+
 import { getVehicles, syncUserProfile } from '../services/db';
 import { UserProfile, Vehicle, Role } from '../types';
-
-// Mock replacements for missing Firebase functions
-const signInWithPopup = async (auth: any, provider: any) => { throw new Error("Mock Mode: Cannot sign in"); };
-const signOut = async (auth: any) => { console.log("Mock SignOut"); };
-const onAuthStateChanged = (auth: any, callback: (user: any) => void) => { return () => {}; };
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -17,6 +22,8 @@ interface AuthContextType {
   isDrivingAssigned: boolean;
   setVehicle: (vehicleId: string) => void;
   login: () => Promise<void>;
+  loginWithEmail: (email: string, pass: string) => Promise<void>;
+  registerWithEmail: (email: string, pass: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
   demoLogin: (role?: Role) => void;
 }
@@ -29,6 +36,8 @@ const AuthContext = createContext<AuthContextType>({
   isDrivingAssigned: true,
   setVehicle: () => {},
   login: async () => {},
+  loginWithEmail: async () => {},
+  registerWithEmail: async () => {},
   logout: async () => {},
   demoLogin: () => {},
 });
@@ -68,7 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
       if (firebaseUser) {
         try {
             // 1. Get/Create User Profile in Firestore
@@ -101,15 +110,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async () => {
     if (!auth) {
-        alert("Firebase non configurato o bloccato in questo ambiente. Usa 'Demo Autista'.");
+        alert("Firebase non configurato. Usa 'Demo Autista'.");
         return;
     }
     try {
       await signInWithPopup(auth, googleProvider!);
     } catch (error: any) {
       console.error("Login failed", error);
-      alert(`Login fallito: ${error.message}`);
+      throw error;
     }
+  };
+
+  const loginWithEmail = async (email: string, pass: string) => {
+     if (!auth) throw new Error("Firebase non attivo");
+     await signInWithEmailAndPassword(auth, email, pass);
+  };
+
+  const registerWithEmail = async (email: string, pass: string, name: string) => {
+      if (!auth) throw new Error("Firebase non attivo");
+      
+      // 1. Create Auth User
+      const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
+      
+      // 2. Update Display Name immediately
+      if (userCredential.user) {
+          await updateProfile(userCredential.user, {
+              displayName: name
+          });
+          
+          // 3. Force sync to create DB entry with correct name
+          await syncUserProfile(userCredential.user.uid, email, name);
+      }
   };
 
   const logout = async () => {
@@ -125,12 +156,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const demoLogin = async (role: Role = 'driver') => {
     setLoading(true);
     
-    // Create a mock user
+    // Create a mock user (Always ACTIVE for demo)
     const mockUser: UserProfile = {
         uid: 'demo-user-123',
         email: 'demo@driverlog.it',
         displayName: 'Mario Rossi (Demo)',
         role: role,
+        status: 'active',
         assignedVehicleId: 'mock-vehicle-1',
         assignedSector: 'Container'
     };
@@ -164,6 +196,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isDrivingAssigned,
       setVehicle, 
       login, 
+      loginWithEmail,
+      registerWithEmail,
       logout, 
       demoLogin 
     }}>

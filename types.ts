@@ -1,5 +1,7 @@
 export type Role = 'driver' | 'master' | 'owner';
 
+export type UserStatus = 'pending' | 'active' | 'suspended';
+
 export type SectorType = 'Cisterna' | 'Container' | 'Centina';
 
 export interface UserProfile {
@@ -7,8 +9,9 @@ export interface UserProfile {
   email: string | null;
   displayName: string | null;
   role: Role;
-  assignedVehicleId: string; // The default vehicle for this driver
-  assignedSector: SectorType; // The default sector for this driver
+  status: UserStatus; // New field for approval process
+  assignedVehicleId: string;
+  assignedSector: SectorType;
 }
 
 export interface Vehicle {
@@ -16,6 +19,12 @@ export interface Vehicle {
   plate: string;
   code: string;
   lastKm: number;
+}
+
+export interface Workshop {
+  id?: string;
+  name: string;
+  province: string;
 }
 
 export type LogType = 'trip' | 'refuel' | 'maintenance';
@@ -33,7 +42,7 @@ export interface TripLog extends BaseLog {
   type: 'trip';
   date: string;
   bollaNumber: string;
-  sector: SectorType; // Cisterna, Container, Centina
+  sector: SectorType;
   departure: string;
   destination: string;
   details?: string;
@@ -52,17 +61,17 @@ export interface RefuelLog extends BaseLog {
 
 export interface MaintenanceLog extends BaseLog {
   type: 'maintenance';
-  subType: 'mechanic' | 'tyres'; // Type of maintenance
-  description: string; // Selected from dropdown or typed
-  workshop: string; // Name of the workshop/mechanic
-  notes?: string; // Optional notes
+  subType: 'mechanic' | 'tyres';
+  description: string;
+  workshop: string;
+  notes?: string;
 }
 
 export interface MonthlyStats {
   id?: string;
   userId: string;
   vehicleId: string;
-  monthKey: string; // Format "YYYY-MM"
+  monthKey: string;
   initialKm: number | null;
   finalKm: number | null;
 }
