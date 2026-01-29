@@ -13,6 +13,7 @@ import { WorkshopsManager } from './pages/WorkshopsManager';
 import { UsersManager } from './pages/UsersManager';
 import { VehiclesManager } from './pages/VehiclesManager';
 import { FuelStationsManager } from './pages/FuelStationsManager';
+import { SectorsManager } from './pages/SectorsManager';
 import { Clock, Lock, LogOut } from 'lucide-react';
 
 // ACCESS DENIED PAGE (Pending or Suspended)
@@ -146,6 +147,11 @@ const AppRoutes = () => {
             <Route path="/master/fuel" element={
                 <RoleRoute allowedRoles={['master']}>
                     <FuelStationsManager />
+                </RoleRoute>
+            } />
+             <Route path="/master/sectors" element={
+                <RoleRoute allowedRoles={['master']}>
+                    <SectorsManager />
                 </RoleRoute>
             } />
 

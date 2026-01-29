@@ -2,19 +2,21 @@ export type Role = 'driver' | 'master' | 'owner';
 
 export type UserStatus = 'pending' | 'active' | 'suspended';
 
-export type SectorType = 'Cisterna' | 'Container' | 'Centina';
+// REMOVED hardcoded SectorType, now dynamic.
+// Kept for backward compatibility if needed, but logic uses string names now.
+export type SectorType = string; 
 
 export interface UserProfile {
   uid: string;
   email: string | null;
   displayName: string | null;
   role: Role;
-  status: UserStatus; // New field for approval process
+  status: UserStatus; 
   assignedVehicleId: string;
-  assignedSector: SectorType;
+  assignedSector: string; // Changed to string to match dynamic sector names
 }
 
-export type VehicleType = 'tractor' | 'trailer'; // Motrice o Rimorchio
+export type VehicleType = 'tractor' | 'trailer'; 
 export type TrailerSubType = 'container' | 'centina' | 'cisterna' | null;
 
 export interface Vehicle {
@@ -22,8 +24,8 @@ export interface Vehicle {
   plate: string;
   code: string;
   type: VehicleType;
-  subType?: TrailerSubType; // Only for trailers
-  defaultTrailerId?: string; // Only for tractors (Default pairing)
+  subType?: TrailerSubType; 
+  defaultTrailerId?: string; 
 }
 
 export interface Workshop {
@@ -35,7 +37,24 @@ export interface Workshop {
 export interface FuelStation {
   id?: string;
   name: string;
-  isPartner: boolean; // True = Convenzionato (Pagamento differito/Fattura)
+  isPartner: boolean; 
+}
+
+// --- DYNAMIC SECTORS ---
+export type FieldType = 'text' | 'number' | 'select';
+
+export interface SectorField {
+    id: string;
+    label: string; // e.g. "Tipo Container" or "Quantità"
+    type: FieldType;
+    options?: string[]; // Only for 'select' type (e.g. ["20", "40", "40HC"])
+    required: boolean;
+}
+
+export interface Sector {
+    id?: string;
+    name: string; // e.g. "Container"
+    fields: SectorField[];
 }
 
 export type LogType = 'trip' | 'refuel' | 'maintenance';
@@ -45,18 +64,19 @@ export interface BaseLog {
   type: LogType;
   userId: string;
   vehicleId: string;
-  timestamp: number; // Unix timestamp
-  createdAt: string; // ISO string
+  timestamp: number; 
+  createdAt: string; 
 }
 
 export interface TripLog extends BaseLog {
   type: 'trip';
   date: string;
   bollaNumber: string;
-  sector: SectorType;
+  sector: string; // Sector Name
+  sectorId?: string; // Reference to Sector Config
   departure: string;
   destination: string;
-  details?: string;
+  customData?: Record<string, string | number>; // Dynamic answers { "Tipo Container": "40HC" }
 }
 
 export interface RefuelLog extends BaseLog {
@@ -76,7 +96,7 @@ export interface MaintenanceLog extends BaseLog {
   description: string;
   workshop: string;
   notes?: string;
-  kmAtMaintenance?: number; // Optional: Only for tractors
+  kmAtMaintenance?: number; 
 }
 
 export interface MonthlyStats {

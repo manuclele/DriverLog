@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { addLog, getLogs, deleteLog, updateLog } from '../services/db';
-import { ArrowLeft, ChevronRight, Save, AlertTriangle, ChevronLeft, Trash2, Edit2, Calendar, Lock, MapPin, Truck } from 'lucide-react';
-import { SectorType, TripLog } from '../types';
+import { addLog, getLogs, deleteLog, updateLog, getSectors } from '../services/db';
+import { ArrowLeft, ChevronRight, Save, AlertTriangle, ChevronLeft, Trash2, Edit2, Calendar, Lock, MapPin, Truck, Layers, ChevronDown } from 'lucide-react';
+import { TripLog, Sector } from '../types';
 
-const SECTORS: SectorType[] = ['Cisterna', 'Container', 'Centina'];
 const DAYS_INITIALS = ['D', 'L', 'M', 'M', 'G', 'V', 'S']; // Domenica is 0
 const EDIT_LIMIT_MS = 24 * 60 * 60 * 1000; // 24 Hours
 
@@ -26,57 +25,68 @@ export const TripForm: React.FC = () => {
   const { user, currentVehicle, availableVehicles } = useAuth();
   const [loading, setLoading] = useState(false);
   
-  // Refs for keyboard navigation
-  const inputRefs = useRef<(HTMLInputElement | HTMLSelectElement | HTMLButtonElement | null)[]>([]);
-  
-  // History State
+  // State
+  const [sectors, setSectors] = useState<Sector[]>([]);
   const [history, setHistory] = useState<TripLog[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // State for the Sector (Button Toggles)
-  const [selectedSector, setSelectedSector] = useState<SectorType>('Container');
-  
-  // State for Date (Calendar Strip)
+  // Form Selections
+  const [selectedSectorId, setSelectedSectorId] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
-  // State for the Form
+  // Form Fields
   const [formData, setFormData] = useState({
     bollaNumber: '',
     departure: '',
-    destination: '',
-    details: 'Standard'
+    destination: ''
   });
+  
+  // Dynamic Answers Store
+  const [dynamicAnswers, setDynamicAnswers] = useState<Record<string, string | number>>({});
 
-  // Load User Preferences and History
+  const inputRefs = useRef<(HTMLInputElement | HTMLSelectElement | HTMLButtonElement | null)[]>([]);
+
+  // Load Initial Data
   useEffect(() => {
-    if (user) {
-        // 1. Check local storage for persistence (last used sector)
-        const lastUsedSector = localStorage.getItem(`lastSector_${user.uid}`) as SectorType;
-        const initialSector = lastUsedSector || user.assignedSector || 'Container';
-        setSelectedSector(initialSector);
+    const init = async () => {
+        const [sectorData, logs] = await Promise.all([
+            getSectors(),
+            user ? getLogs(user.uid, 'trip', 50) : []
+        ]);
+        
+        setSectors(sectorData);
+        setHistory(logs as TripLog[]);
 
-        // 2. Load History
-        loadHistory();
-    }
+        // Logic: Set Initial Sector
+        if (user) {
+            // 1. Try local storage
+            const lastUsedSectorId = localStorage.getItem(`lastSectorId_${user.uid}`);
+            
+            // 2. Try assigned sector (match name to ID)
+            const assignedSector = sectorData.find(s => s.name === user.assignedSector);
+            
+            // 3. Fallback to first sector
+            const initialId = lastUsedSectorId || (assignedSector ? assignedSector.id : sectorData[0]?.id);
+            
+            if (initialId) setSelectedSectorId(initialId);
+        }
+    };
+    init();
   }, [user]);
 
-  const loadHistory = async () => {
-      if (!user) return;
-      const logs = await getLogs(user.uid, 'trip', 50); // Increase limit to allow filtering
-      setHistory(logs as TripLog[]);
-  };
-
-  const handleSectorChange = (sector: SectorType) => {
-      setSelectedSector(sector);
+  const handleSectorChange = (id: string) => {
+      setSelectedSectorId(id);
+      // Reset dynamic answers when switching sector
+      setDynamicAnswers({});
       if (user) {
-          localStorage.setItem(`lastSector_${user.uid}`, sector);
+          localStorage.setItem(`lastSectorId_${user.uid}`, id);
       }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
     
-    // Auto-capitalize text inputs for better data hygiene
+    // Auto-capitalize text inputs
     if (e.target.name === 'departure' || e.target.name === 'destination' || e.target.name === 'bollaNumber') {
         value = toTitleCase(value);
     }
@@ -84,7 +94,13 @@ export const TripForm: React.FC = () => {
     setFormData({ ...formData, [e.target.name]: value });
   };
 
-  // Handle Enter Key Navigation
+  const handleDynamicChange = (label: string, value: string | number) => {
+      setDynamicAnswers(prev => ({
+          ...prev,
+          [label]: value
+      }));
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent, index: number) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -92,13 +108,12 @@ export const TripForm: React.FC = () => {
       if (nextInput) {
         nextInput.focus();
       } else {
-        // If it's the last input (select), submit form
         handleSubmit(e as any);
       }
     }
   };
 
-  // Date Navigation Logic
+  // Date Navigation
   const shiftDate = (days: number) => {
     const newDate = new Date(selectedDate);
     newDate.setDate(selectedDate.getDate() + days);
@@ -132,11 +147,15 @@ export const TripForm: React.FC = () => {
       setFormData({
           bollaNumber: log.bollaNumber,
           departure: log.departure,
-          destination: log.destination,
-          details: log.details || 'Standard'
+          destination: log.destination
       });
-      setSelectedSector(log.sector);
-      setSelectedDate(new Date(log.date)); // Parse string YYYY-MM-DD back to Date
+      
+      // Match Sector ID by Name if stored log doesn't have ID (legacy support)
+      const sec = sectors.find(s => s.id === log.sectorId) || sectors.find(s => s.name === log.sector);
+      if (sec) setSelectedSectorId(sec.id!);
+
+      setDynamicAnswers(log.customData || {});
+      setSelectedDate(new Date(log.date)); 
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -144,7 +163,6 @@ export const TripForm: React.FC = () => {
       if (!canEdit(log)) return;
       if (!confirm("Sei sicuro di voler eliminare questo viaggio?")) return;
       await deleteLog('logs', id);
-      // Remove from local state immediately for speed
       setHistory(prev => prev.filter(item => item.id !== id));
   };
 
@@ -154,10 +172,20 @@ export const TripForm: React.FC = () => {
         alert("Nessun veicolo selezionato");
         return;
     }
+    
+    // Validate Dynamic Fields
+    const activeSector = sectors.find(s => s.id === selectedSectorId);
+    if (activeSector) {
+        for (const field of activeSector.fields) {
+            if (field.required && !dynamicAnswers[field.label]) {
+                alert(`Il campo '${field.label}' è obbligatorio.`);
+                return;
+            }
+        }
+    }
 
     setLoading(true);
     
-    // Format date as YYYY-MM-DD local time
     const offset = selectedDate.getTimezoneOffset();
     const localDate = new Date(selectedDate.getTime() - (offset*60*1000));
     const formattedDate = localDate.toISOString().split('T')[0];
@@ -165,9 +193,11 @@ export const TripForm: React.FC = () => {
     const payload = {
         type: 'trip',
         userId: user.uid,
-        vehicleId: currentVehicle.id, // Assigns the trip to the CURRENTLY selected vehicle
-        sector: selectedSector,
+        vehicleId: currentVehicle.id,
+        sectorId: selectedSectorId,
+        sector: activeSector ? activeSector.name : 'Unknown',
         ...formData,
+        customData: dynamicAnswers,
         date: formattedDate,
         timestamp: selectedDate.getTime()
     };
@@ -176,18 +206,15 @@ export const TripForm: React.FC = () => {
       if (editingId) {
           await updateLog('logs', editingId, payload);
           setEditingId(null);
-          // Refresh list locally
           setHistory(prev => prev.map(item => item.id === editingId ? { ...item, ...payload } as TripLog : item));
       } else {
           const docRef = await addLog('logs', payload);
-          // Add to history top
           setHistory(prev => [{ id: docRef.id, ...payload, createdAt: new Date().toISOString() } as TripLog, ...prev]);
       }
       
-      // Reset form but keep context
-      setFormData({ bollaNumber: '', departure: '', destination: '', details: 'Standard' });
+      setFormData({ bollaNumber: '', departure: '', destination: '' });
+      setDynamicAnswers({});
       
-      // Auto-focus first field for next entry
       setTimeout(() => {
           inputRefs.current[0]?.focus();
       }, 100);
@@ -199,34 +226,23 @@ export const TripForm: React.FC = () => {
     }
   };
 
-  const isSectorAssigned = user ? selectedSector === user.assignedSector : true;
+  const activeSector = sectors.find(s => s.id === selectedSectorId);
+  const isSectorAssigned = user ? activeSector?.name === user.assignedSector : true;
   const monthName = selectedDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' });
   const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-  // Filter history based on selected Month/Year
+  // Group History
   const filteredHistory = history.filter(log => {
       const logDate = new Date(log.date);
       return logDate.getMonth() === selectedDate.getMonth() && logDate.getFullYear() === selectedDate.getFullYear();
   });
 
-  // Group History by Date
   const groupedHistory = filteredHistory.reduce((groups, log) => {
       const date = log.date;
-      if (!groups[date]) {
-          groups[date] = [];
-      }
+      if (!groups[date]) groups[date] = [];
       groups[date].push(log);
       return groups;
   }, {} as Record<string, TripLog[]>);
-
-  // Helper to get background color based on sector
-  const getSectorStyle = (sector: SectorType) => {
-      switch(sector) {
-          case 'Cisterna': return 'bg-cyan-50 border-cyan-100';
-          case 'Centina': return 'bg-orange-50 border-orange-100';
-          default: return 'bg-white border-slate-100'; // Container
-      }
-  };
 
   return (
     <div className="space-y-5 pb-8">
@@ -244,7 +260,7 @@ export const TripForm: React.FC = () => {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         
-        {/* SECTOR BUTTONS */}
+        {/* SECTOR BUTTONS (Dynamic) */}
         <div className="space-y-2">
             <div className="flex justify-between items-end">
                 <label className="text-sm font-semibold text-slate-500">Settore Operativo</label>
@@ -254,22 +270,22 @@ export const TripForm: React.FC = () => {
                      </span>
                 )}
             </div>
-            <div className="grid grid-cols-3 gap-2">
-                {SECTORS.map((sec) => {
-                    const isActive = selectedSector === sec;
+            <div className="flex flex-wrap gap-2">
+                {sectors.map((sec) => {
+                    const isActive = selectedSectorId === sec.id;
                     return (
                         <button
-                            key={sec}
+                            key={sec.id}
                             type="button"
-                            onClick={() => handleSectorChange(sec)}
-                            className={`py-3 px-1 rounded-xl font-bold text-sm transition-all border-2
+                            onClick={() => handleSectorChange(sec.id!)}
+                            className={`flex-1 py-3 px-2 rounded-xl font-bold text-sm transition-all border-2 min-w-[30%]
                                 ${isActive 
                                     ? 'bg-slate-800 text-white border-slate-800 shadow-md transform scale-[1.02]' 
                                     : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
                                 }
                             `}
                         >
-                            {sec}
+                            {sec.name}
                         </button>
                     );
                 })}
@@ -321,7 +337,7 @@ export const TripForm: React.FC = () => {
             </div>
         </div>
 
-        {/* Inputs */}
+        {/* BASIC FIELDS */}
         <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4">
             <div>
                 <label className="block text-sm font-semibold text-slate-500 mb-1">Numero Bolla / DDT</label>
@@ -376,28 +392,47 @@ export const TripForm: React.FC = () => {
             </div>
         </div>
 
-        <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-             <div>
-                <label className="block text-sm font-semibold text-slate-500 mb-1">Tipo Viaggio</label>
-                <div className="relative">
-                    <select
-                        ref={el => { if (el) inputRefs.current[3] = el; }}
-                        name="details"
-                        value={formData.details}
-                        onChange={handleChange}
-                        onKeyDown={(e) => handleKeyDown(e, 3)}
-                        // Select usually submits or finishes interaction
-                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-lg appearance-none outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                        <option value="Standard">Consegna Standard</option>
-                        <option value="Urgent">Urgente / Espresso</option>
-                        <option value="Collection">Ritiro Merce</option>
-                        <option value="Return">Rientro Vuoto</option>
-                    </select>
-                    <ChevronRight className="absolute right-4 top-1/2 transform -translate-y-1/2 rotate-90 text-slate-400 pointer-events-none" />
+        {/* DYNAMIC FIELDS BASED ON SECTOR */}
+        {activeSector && activeSector.fields && activeSector.fields.length > 0 && (
+            <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4 animate-fade-in">
+                <div className="flex items-center gap-2 mb-2 border-b border-slate-100 pb-2">
+                    <Layers size={16} className="text-blue-500" />
+                    <h3 className="font-bold text-slate-700">Dettagli {activeSector.name}</h3>
                 </div>
+
+                {activeSector.fields.map((field, idx) => (
+                    <div key={field.id}>
+                        <label className="block text-sm font-semibold text-slate-500 mb-1">
+                            {field.label} {field.required && <span className="text-red-500">*</span>}
+                        </label>
+                        
+                        {field.type === 'select' ? (
+                            <div className="relative">
+                                <select
+                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-lg appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                    value={dynamicAnswers[field.label] || ''}
+                                    onChange={(e) => handleDynamicChange(field.label, e.target.value)}
+                                >
+                                    <option value="">-- Seleziona --</option>
+                                    {field.options?.map(opt => (
+                                        <option key={opt} value={opt}>{opt}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={20} />
+                            </div>
+                        ) : (
+                            <input 
+                                type={field.type === 'number' ? 'number' : 'text'}
+                                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                value={dynamicAnswers[field.label] || ''}
+                                onChange={(e) => handleDynamicChange(field.label, e.target.value)}
+                                placeholder={field.type === 'number' ? '0' : '...'}
+                            />
+                        )}
+                    </div>
+                ))}
             </div>
-        </div>
+        )}
 
         <button
             type="submit"
@@ -416,7 +451,7 @@ export const TripForm: React.FC = () => {
         {editingId && (
             <button 
                 type="button" 
-                onClick={() => { setEditingId(null); setFormData({ bollaNumber: '', departure: '', destination: '', details: 'Standard' }); }}
+                onClick={() => { setEditingId(null); setFormData({ bollaNumber: '', departure: '', destination: '' }); setDynamicAnswers({}); }}
                 className="w-full py-2 text-slate-500 text-sm underline"
             >
                 Annulla Modifica
@@ -425,7 +460,7 @@ export const TripForm: React.FC = () => {
 
       </form>
 
-      {/* TRIP HISTORY - GROUPED BY DATE */}
+      {/* TRIP HISTORY */}
       <div className="mt-8 pt-6 border-t border-slate-200">
           <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
               <Calendar className="text-slate-400" size={20} />
@@ -454,42 +489,44 @@ export const TripForm: React.FC = () => {
                                   const isCurrentVehicle = currentVehicle && trip.vehicleId === currentVehicle.id;
                                   
                                   return (
-                                      <div key={trip.id} className={`${getSectorStyle(trip.sector)} p-4 rounded-xl shadow-sm border flex flex-col gap-2 relative group`}>
+                                      <div key={trip.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col gap-2 relative group">
                                           {/* Row 1: Header */}
                                           <div className="flex justify-between items-start">
                                               <div className="flex items-center gap-2">
-                                                  {/* Vehicle Badge */}
                                                   <div className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${isCurrentVehicle ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-yellow-100 text-yellow-800 border-yellow-200'}`}>
                                                       <Truck size={10} />
                                                       {vehicle?.plate || 'Targa N.D.'}
                                                   </div>
-                                                  
-                                                  <div className="text-xs font-medium text-slate-400">
-                                                      {trip.details}
+                                                  <div className="text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded uppercase">
+                                                      {trip.sector}
                                                   </div>
-                                              </div>
-                                              
-                                              <div className="bg-white/80 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border border-slate-200 shadow-sm">
-                                                  {trip.sector}
                                               </div>
                                           </div>
                                           
-                                          {/* Row 2: Content */}
-                                          <div className="flex items-center gap-2">
-                                                <div className="flex-1">
-                                                    <div className="flex items-center gap-2 text-slate-800 font-bold text-lg leading-tight">
-                                                        <span>{trip.departure}</span>
-                                                        <ChevronRight size={16} className="text-slate-400" />
-                                                        <span>{trip.destination}</span>
-                                                    </div>
-                                                    <div className="text-sm text-slate-500 mt-1 flex items-center gap-2">
-                                                        <MapPin size={12} /> Bolla: <span className="font-mono text-slate-700 bg-white px-1 rounded">{trip.bollaNumber}</span>
-                                                    </div>
-                                                </div>
+                                          {/* Row 2: Route */}
+                                          <div className="flex items-center gap-2 text-slate-800 font-bold text-lg leading-tight mt-1">
+                                                <span>{trip.departure}</span>
+                                                <ChevronRight size={16} className="text-slate-400" />
+                                                <span>{trip.destination}</span>
+                                          </div>
+                                          <div className="text-sm text-slate-500 flex items-center gap-2">
+                                                <MapPin size={12} /> Bolla: <span className="font-mono text-slate-700 bg-slate-50 px-1 rounded border border-slate-100">{trip.bollaNumber}</span>
                                           </div>
 
-                                          {/* Row 3: Actions */}
-                                          <div className="flex justify-end gap-3 mt-2 border-t border-slate-200/50 pt-2">
+                                          {/* Row 3: Custom Data (Dynamic Display) */}
+                                          {trip.customData && Object.keys(trip.customData).length > 0 && (
+                                              <div className="mt-2 bg-slate-50 p-2 rounded-lg border border-slate-100 grid grid-cols-2 gap-x-4 gap-y-1">
+                                                  {Object.entries(trip.customData).map(([key, val]) => (
+                                                      <div key={key} className="text-xs">
+                                                          <span className="text-slate-400 font-medium">{key}: </span>
+                                                          <span className="text-slate-700 font-bold">{val}</span>
+                                                      </div>
+                                                  ))}
+                                              </div>
+                                          )}
+
+                                          {/* Row 4: Actions */}
+                                          <div className="flex justify-end gap-3 mt-2 border-t border-slate-100 pt-2">
                                               {editable ? (
                                                 <>
                                                   <button 

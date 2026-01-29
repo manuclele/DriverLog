@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Shield, Hammer, Truck, Users, FileText, ChevronRight, Fuel } from 'lucide-react';
+import { Shield, Hammer, Truck, Users, FileText, ChevronRight, Fuel, Layers } from 'lucide-react';
 
 const AdminCard: React.FC<{
   title: string;
@@ -54,6 +54,15 @@ export const MasterDashboard: React.FC = () => {
         <h3 className="text-sm font-bold text-slate-500 uppercase ml-1">Anagrafiche & Configurazione</h3>
         
         <AdminCard 
+            title="Gestione Settori & Dettagli"
+            desc="Configura i tipi di viaggio e campi richiesti."
+            icon={<Layers size={24} />}
+            color="bg-purple-600"
+            onClick={() => navigate('/master/sectors')}
+            badge="NEW"
+        />
+
+        <AdminCard 
             title="Gestione Distributori"
             desc="Pompe convenzionate e metodi pagamento."
             icon={<Fuel size={24} />}
@@ -95,7 +104,6 @@ export const MasterDashboard: React.FC = () => {
             icon={<FileText size={24} />}
             color="bg-emerald-600"
             onClick={() => alert('Work in progress: Registro Globale')}
-            badge="NEW"
         />
       </div>
     </div>
