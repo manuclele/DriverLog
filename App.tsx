@@ -5,6 +5,7 @@ import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
 import { TripForm } from './pages/TripForm';
 import { RefuelForm } from './pages/RefuelForm';
+import { MaintenanceForm } from './pages/MaintenanceForm';
 import { Login } from './pages/Login';
 
 // Protected Route Wrapper
@@ -41,10 +42,7 @@ const AppRoutes = () => {
             } />
             <Route path="/maintenance" element={
                 <ProtectedRoute>
-                    <div className="flex flex-col items-center justify-center h-64 text-slate-400">
-                        <p>Funzionalità in arrivo</p>
-                        <button onClick={() => window.history.back()} className="mt-4 text-blue-600 underline">Torna indietro</button>
-                    </div>
+                    <MaintenanceForm />
                 </ProtectedRoute>
             } />
             <Route path="*" element={<Navigate to="/" replace />} />

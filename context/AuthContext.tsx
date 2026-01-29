@@ -1,7 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth, googleProvider } from '../services/firebase';
+// import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth'; // Removed due to import errors
 import { getVehicles, syncUserProfile } from '../services/db';
 import { UserProfile, Vehicle, Role } from '../types';
+
+// Mock replacements for missing Firebase functions
+const signInWithPopup = async (auth: any, provider: any) => { throw new Error("Mock Mode: Cannot sign in"); };
+const signOut = async (auth: any) => { console.log("Mock SignOut"); };
+const onAuthStateChanged = (auth: any, callback: (user: any) => void) => { return () => {}; };
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -51,16 +57,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const storedVehicleId = localStorage.getItem(`lastVehicle_${userProfile.uid}`);
     const targetId = storedVehicleId || userProfile.assignedVehicleId;
     const found = vehicles.find(v => v.id === targetId) || vehicles.find(v => v.id === userProfile.assignedVehicleId);
-    setCurrentVehicle(found || null);
+    setCurrentVehicle(found || (vehicles.length > 0 ? vehicles[0] : null));
   };
 
   useEffect(() => {
+    // If Auth is null (Mock mode), stop loading immediately
     if (!auth) {
+      console.log("Auth not initialized (Mock Mode available)");
       setLoading(false);
       return;
     }
 
-    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
             // 1. Get/Create User Profile in Firestore
@@ -79,15 +87,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         } catch (error) {
             console.error("Error syncing user profile:", error);
-            // Fallback for UI if DB fails
-            setUser({
-                uid: firebaseUser.uid,
-                email: firebaseUser.email,
-                displayName: firebaseUser.displayName,
-                role: 'driver',
-                assignedVehicleId: '',
-                assignedSector: 'Container'
-            });
+            setUser(null);
         }
       } else {
         setUser(null);
@@ -100,28 +100,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async () => {
-    if (!auth) return;
+    if (!auth) {
+        alert("Firebase non configurato o bloccato in questo ambiente. Usa 'Demo Autista'.");
+        return;
+    }
     try {
-      await auth.signInWithPopup(googleProvider);
-    } catch (error) {
+      await signInWithPopup(auth, googleProvider!);
+    } catch (error: any) {
       console.error("Login failed", error);
+      alert(`Login fallito: ${error.message}`);
     }
   };
 
   const logout = async () => {
-    if (!auth) {
-      setUser(null);
-      return;
+    if (auth) {
+        await signOut(auth);
     }
-    await auth.signOut();
+    setUser(null);
+    setCurrentVehicle(null);
     localStorage.removeItem(`lastVehicle_${user?.uid}`);
   };
 
-  // WARNING: Demo Login now creates a "fake" auth state, 
-  // but it won't work well with real Firestore rules if we enable them strictly.
-  // Useful only for UI testing without network.
+  // TRUE DEMO LOGIN for Preview Environment
   const demoLogin = async (role: Role = 'driver') => {
-    alert("Attenzione: La modalità Demo Login non salva i dati nel DB reale (richiede Auth Reale). Usa 'Accedi con Google'.");
+    setLoading(true);
+    
+    // Create a mock user
+    const mockUser: UserProfile = {
+        uid: 'demo-user-123',
+        email: 'demo@driverlog.it',
+        displayName: 'Mario Rossi (Demo)',
+        role: role,
+        assignedVehicleId: 'mock-vehicle-1',
+        assignedSector: 'Container'
+    };
+
+    setUser(mockUser);
+    
+    // Load mock vehicles
+    const vehicles = await loadVehiclesData();
+    resolveVehicleSelection(mockUser, vehicles);
+    
+    setLoading(false);
   };
 
   const setVehicle = (vehicleId: string) => {

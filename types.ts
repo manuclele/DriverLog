@@ -41,17 +41,21 @@ export interface TripLog extends BaseLog {
 
 export interface RefuelLog extends BaseLog {
   type: 'refuel';
+  subType?: 'diesel' | 'adblue';
   stationName: string;
   liters: number;
   cost: number;
   kmAtRefuel: number;
   receiptUrl?: string;
+  receiptData?: string;
 }
 
 export interface MaintenanceLog extends BaseLog {
   type: 'maintenance';
-  description: string;
-  cost?: number;
+  subType: 'mechanic' | 'tyres'; // Type of maintenance
+  description: string; // Selected from dropdown or typed
+  workshop: string; // Name of the workshop/mechanic
+  notes?: string; // Optional notes
 }
 
 export interface MonthlyStats {
