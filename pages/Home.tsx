@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Fuel, Wrench, AlertTriangle, ChevronLeft, ChevronRight, Gauge, Calculator, History, AlertCircle } from 'lucide-react';
+import { MapPin, Fuel, Wrench, AlertTriangle, ChevronLeft, ChevronRight, Gauge, Calculator, History, AlertCircle, User, Truck, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getMonthlyStats, saveMonthlyStats, getPreviousMonthStats, getUserMonthlyStats } from '../services/db';
+import { saveMonthlyStats, getPreviousMonthStats, getUserMonthlyStats } from '../services/db';
 import { MonthlyStats, Vehicle } from '../types';
 
 const ActionCard: React.FC<{
@@ -50,14 +50,12 @@ const VehicleStatRow: React.FC<{
     });
     const [isSaving, setIsSaving] = useState(false);
 
-    // Auto-fill logic on mount if inputs are empty
     useEffect(() => {
         const tryAutoFill = async () => {
             if (!inputs.initial) {
                  const prevData = await getPreviousMonthStats(userId, vehicle.id, monthKey);
                  if (prevData?.finalKm) {
                      setInputs(prev => ({ ...prev, initial: prevData.finalKm!.toString() }));
-                     // We don't save immediately, wait for user interaction or blur
                  }
             }
         };
@@ -70,10 +68,10 @@ const VehicleStatRow: React.FC<{
     };
 
     const handleSave = async () => {
-        if (!inputs.initial && !inputs.final) return; // Don't save empty
+        if (!inputs.initial && !inputs.final) return; 
         setIsSaving(true);
         const newStats: MonthlyStats = {
-            ...initialStats, // Keep existing ID if present
+            ...initialStats, 
             userId,
             vehicleId: vehicle.id,
             monthKey,
@@ -82,7 +80,7 @@ const VehicleStatRow: React.FC<{
         };
         await saveMonthlyStats(newStats);
         setIsSaving(false);
-        onStatsUpdate(); // Notify parent to recalc totals
+        onStatsUpdate(); 
     };
 
     const start = inputs.initial ? parseInt(inputs.initial) : 0;
@@ -92,15 +90,15 @@ const VehicleStatRow: React.FC<{
     return (
         <div className={`p-4 border-b border-slate-100 ${isAssigned ? 'bg-white' : 'bg-yellow-50/80'}`}>
              <div className="flex items-center justify-between mb-2">
+                 {/* Only Plate, removed Code */}
                  <div className="flex items-center gap-2">
-                     <span className={`text-xs font-bold px-2 py-0.5 rounded border ${isAssigned ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-yellow-100 border-yellow-200 text-yellow-800'}`}>
+                     <span className={`text-sm font-black font-mono px-2 py-0.5 rounded border-2 ${isAssigned ? 'bg-white border-slate-900 text-slate-900' : 'bg-white border-yellow-600 text-yellow-800'}`}>
                          {vehicle.plate}
                      </span>
-                     <span className="text-[10px] text-slate-400 font-mono">{vehicle.code}</span>
                  </div>
                  {!isAssigned && (
                      <div className="flex items-center gap-1 text-[10px] font-bold text-yellow-600 bg-white px-2 py-0.5 rounded-full shadow-sm">
-                         <AlertCircle size={10} /> NON ASSEGNATO
+                         <AlertCircle size={10} /> VEICOLO PROVVISORIO
                      </div>
                  )}
              </div>
@@ -154,43 +152,34 @@ export const Home: React.FC = () => {
   const navigate = useNavigate();
   const { user, currentVehicle, availableVehicles, setVehicle, isDrivingAssigned } = useAuth();
   
-  // Month Navigation State
   const [viewDate, setViewDate] = useState(new Date());
-  
-  // Data State
   const [activeVehiclesList, setActiveVehiclesList] = useState<{ vehicle: Vehicle, stats: MonthlyStats | null }[]>([]);
   const [driverTotalKm, setDriverTotalKm] = useState<number>(0);
-  const [refreshTrigger, setRefreshTrigger] = useState(0); // Simple counter to force reload
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const getMonthKey = (date: Date) => date.toISOString().slice(0, 7);
   const monthKey = getMonthKey(viewDate);
 
-  // Load ALL stats for the user for this month
+  // Filter only TRACTORS for the selector
+  const tractorsOnly = availableVehicles.filter(v => v.type === 'tractor');
+
   useEffect(() => {
     const loadData = async () => {
       if (!user || !currentVehicle) return;
       
-      // 1. Get all monthly stats for this user
       const allStats = await getUserMonthlyStats(user.uid, monthKey);
       
-      // 2. Identify unique vehicles involved
-      // We want to show:
-      // a) The current selected vehicle (ALWAYS)
-      // b) Any other vehicle that has stats for this month
-      
       const vehicleIdsToShow = new Set<string>();
-      vehicleIdsToShow.add(currentVehicle.id); // Always show current
+      vehicleIdsToShow.add(currentVehicle.id);
       allStats.forEach(s => vehicleIdsToShow.add(s.vehicleId));
 
-      // 3. Build the display list
       const list = Array.from(vehicleIdsToShow).map(vId => {
           const v = availableVehicles.find(av => av.id === vId);
-          if (!v) return null; // Should not happen usually
+          if (!v) return null;
           const s = allStats.find(stat => stat.vehicleId === vId) || null;
           return { vehicle: v, stats: s };
       }).filter(Boolean) as { vehicle: Vehicle, stats: MonthlyStats | null }[];
 
-      // Sort: Assigned Vehicle first, then current (if different), then others
       list.sort((a, b) => {
           if (a.vehicle.id === user.assignedVehicleId) return -1;
           if (b.vehicle.id === user.assignedVehicleId) return 1;
@@ -199,7 +188,6 @@ export const Home: React.FC = () => {
 
       setActiveVehiclesList(list);
 
-      // 4. Calculate Total
       let total = 0;
       list.forEach(item => {
           if (item.stats?.initialKm && item.stats?.finalKm && item.stats.finalKm >= item.stats.initialKm) {
@@ -214,7 +202,6 @@ export const Home: React.FC = () => {
 
   const changeMonth = (delta: number) => {
     const newDate = new Date(viewDate);
-    // Fix: Set date to 1st of month to avoid overflow on 31st (Jan 31 + 1 month -> Feb 31 -> Mar 3)
     newDate.setDate(1); 
     newDate.setMonth(viewDate.getMonth() + delta);
     setViewDate(newDate);
@@ -223,55 +210,45 @@ export const Home: React.FC = () => {
   const monthName = viewDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' });
 
   return (
-    <div className="flex flex-col gap-6 pt-2">
-      {/* Welcome & Vehicle Selector Card */}
-      <div className={`p-4 rounded-xl shadow-sm border transition-colors ${!isDrivingAssigned ? 'bg-orange-50 border-orange-200' : 'bg-white border-slate-100'}`}>
+    <div className="flex flex-col gap-5 pt-2">
+      
+      {/* 
+          CLEAN HEADER - Horizontal Layout with Truncation
+      */}
+      <div className={`bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between gap-4 ${!isDrivingAssigned ? 'border-orange-200 bg-orange-50/30' : ''}`}>
          
-         <div className="flex justify-between items-start gap-4">
-             {/* Left: Name */}
-             <div>
-                <h2 className="text-slate-500 text-sm font-medium uppercase tracking-wider mb-1">Benvenuto</h2>
-                <p className="text-2xl font-bold text-slate-800 leading-tight">
-                    {user?.displayName || 'Autista'}
-                </p>
-                <div className="mt-2 text-sm text-slate-600 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                    Turno Attivo
-                </div>
-             </div>
+         {/* LEFT: Driver Info (Flex-1 allows it to take space, min-w-0 allows truncation) */}
+         <div className="flex-1 min-w-0">
+             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Autista</span>
+             
+             {/* Name truncates with ellipsis if too long */}
+             <h2 className="text-2xl font-bold text-slate-800 leading-none truncate pr-2" title={user?.displayName || ''}>
+                 {user?.displayName || 'Utente'}
+             </h2>
+             
+             {!isDrivingAssigned && (
+                 <span className="text-[10px] text-orange-600 font-bold flex items-center gap-1 mt-1.5">
+                     <AlertTriangle size={12} /> Veicolo Provvisorio
+                 </span>
+             )}
+         </div>
 
-             {/* Right: Vehicle Selector */}
-             <div className="flex flex-col items-end">
-                <label className={`text-xs font-semibold mb-1 ${!isDrivingAssigned ? 'text-orange-700 flex items-center gap-1' : 'text-slate-400'}`}>
-                    {!isDrivingAssigned && <AlertTriangle size={12} />}
-                    VEICOLO IN USO
-                </label>
-                <div className="relative">
-                    <select 
-                        value={currentVehicle?.id || ''}
-                        onChange={(e) => setVehicle(e.target.value)}
-                        className={`appearance-none pl-3 pr-8 py-2 rounded-lg text-sm font-bold border-2 outline-none focus:ring-2 focus:ring-opacity-50 transition-all cursor-pointer
-                            ${!isDrivingAssigned 
-                                ? 'bg-white border-orange-300 text-orange-800 focus:ring-orange-500 shadow-sm' 
-                                : 'bg-slate-100 border-transparent text-slate-700 focus:bg-white focus:ring-blue-500'
-                            }`}
-                    >
-                        {availableVehicles.map(v => (
-                            <option key={v.id} value={v.id}>
-                                {v.plate} ({v.code})
-                            </option>
-                        ))}
-                    </select>
-                    {/* Custom Arrow */}
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <svg className={`w-4 h-4 ${!isDrivingAssigned ? 'text-orange-600' : 'text-slate-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                    </div>
-                </div>
-                {!isDrivingAssigned && (
-                    <span className="text-[10px] text-orange-600 font-medium mt-1">
-                        Diverso dal veicolo assegnato
-                    </span>
-                )}
+         {/* RIGHT: Vehicle Selector (Shrink-0 prevents it from squishing) */}
+         <div className="text-right shrink-0">
+             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Motrice</span>
+             <div className="relative inline-block">
+                 <select 
+                     value={currentVehicle?.id || ''}
+                     onChange={(e) => setVehicle(e.target.value)}
+                     className="appearance-none bg-blue-50 text-blue-700 font-bold py-2 pl-4 pr-10 rounded-xl border border-blue-100 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all active:scale-95 text-lg w-full max-w-[140px]"
+                 >
+                     {tractorsOnly.map(v => (
+                         <option key={v.id} value={v.id}>
+                             {v.plate}
+                         </option>
+                     ))}
+                 </select>
+                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-500 pointer-events-none" size={18} />
              </div>
          </div>
       </div>

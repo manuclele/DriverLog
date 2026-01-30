@@ -1,8 +1,8 @@
-// import { initializeApp, getApps, getApp } from 'firebase/app';
-// import { getAuth, GoogleAuthProvider, Auth } from 'firebase/auth';
-// import { getFirestore, Firestore } from 'firebase/firestore';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
-// Configuration provided by the user
+// Configuration
 const firebaseConfig = {
   apiKey: "AIzaSyAUYtiSH2zikgshqnY4feyFewJKZ8Psddc",
   authDomain: "driverlog-72469.firebaseapp.com",
@@ -18,29 +18,20 @@ let auth: any = null;
 let db: any = null;
 let googleProvider: any = null;
 
-// FORCE MOCK MODE:
-// The environment seems to lack correct Firebase module exports or version compatibility.
-// We fallback to null exports which triggers the "Mock Mode" in the rest of the application.
-console.warn("Firebase imports failed. Running in Offline/Mock Mode.");
-
-/*
 try {
-  // Initialize Firebase (Modular)
-  if (!getApps().length) {
-    app = initializeApp(firebaseConfig);
-  } else {
-    app = getApp();
-  }
+    // Singleton Initialization
+    if (!getApps().length) {
+      app = initializeApp(firebaseConfig);
+    } else {
+      app = getApp();
+    }
 
-  auth = getAuth(app);
-  db = getFirestore(app);
-  googleProvider = new GoogleAuthProvider();
-  console.log("Firebase initialized successfully");
-} catch (error) {
-  console.warn("Firebase initialization failed (Running in Offline/Mock Mode):", error);
-  // We leave auth and db as null. The db.ts service will handle this.
+    auth = getAuth(app);
+    db = getFirestore(app);
+    googleProvider = new GoogleAuthProvider();
+    
+} catch (e) {
+    console.error("Firebase Init Error:", e);
 }
-*/
 
-// Export services
 export { auth, db, googleProvider };

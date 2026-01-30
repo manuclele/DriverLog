@@ -1,7 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Shield, Hammer, Truck, Users, FileText, ChevronRight, Fuel, Layers } from 'lucide-react';
+import { Shield, Hammer, Truck, Users, FileText, ChevronRight, Fuel, Layers, Database } from 'lucide-react';
+import { seedFirestore } from '../services/db';
 
 const AdminCard: React.FC<{
   title: string;
@@ -33,6 +34,18 @@ export const MasterDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  const handleSeed = async () => {
+      if (confirm("Attenzione: Questa operazione scriverà dati di esempio (Settori, Veicoli demo) nel Database Cloud. Continuare?")) {
+          try {
+              await seedFirestore();
+              alert("Database inizializzato con successo!");
+          } catch (e) {
+              alert("Errore durante l'inizializzazione.");
+              console.error(e);
+          }
+      }
+  };
+
   return (
     <div className="space-y-6 pt-2">
       {/* Welcome Card */}
@@ -46,7 +59,7 @@ export const MasterDashboard: React.FC = () => {
           </div>
           <div className="mt-6 flex gap-3 text-xs font-medium text-slate-300">
               <span className="bg-slate-700 px-3 py-1 rounded-full">Privilegi: FULL</span>
-              <span className="bg-slate-700 px-3 py-1 rounded-full">Database: READ/WRITE</span>
+              <span className="bg-slate-700 px-3 py-1 rounded-full">Database: PRODUCTION</span>
           </div>
       </div>
 
@@ -96,7 +109,7 @@ export const MasterDashboard: React.FC = () => {
       </div>
 
       <div className="space-y-2">
-        <h3 className="text-sm font-bold text-slate-500 uppercase ml-1">Controllo Operativo</h3>
+        <h3 className="text-sm font-bold text-slate-500 uppercase ml-1">Strumenti Sistema</h3>
         
         <AdminCard 
             title="Registro Globale"
@@ -105,6 +118,19 @@ export const MasterDashboard: React.FC = () => {
             color="bg-emerald-600"
             onClick={() => alert('Work in progress: Registro Globale')}
         />
+
+        <button 
+            onClick={handleSeed}
+            className="w-full p-5 rounded-xl border-2 border-dashed border-slate-300 flex items-center gap-4 text-left hover:bg-slate-50 hover:border-slate-400 transition-all text-slate-400 hover:text-slate-600"
+        >
+            <div className="p-3 rounded-xl bg-slate-100">
+                <Database size={24} />
+            </div>
+            <div>
+                <h3 className="font-bold text-sm">Inizializza Database</h3>
+                <p className="text-xs">Carica settori e dati di esempio (Seed)</p>
+            </div>
+        </button>
       </div>
     </div>
   );
