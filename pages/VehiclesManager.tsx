@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getVehicles, addVehicle, updateVehicle, deleteVehicle, batchImportVehicles } from '../services/db';
 import { Vehicle, VehicleType, TrailerSubType } from '../types';
-import { ArrowLeft, Plus, Trash2, Truck, Container, Edit2, Link as LinkIcon, Upload, Save, X, Info } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Truck, Container, Edit2, Link as LinkIcon, Upload, Save, X, CheckSquare, Square } from 'lucide-react';
 
 export const VehiclesManager: React.FC = () => {
     const navigate = useNavigate();
@@ -26,6 +26,8 @@ export const VehiclesManager: React.FC = () => {
 
     // Import State
     const [importData, setImportData] = useState('');
+    const [importCandidates, setImportCandidates] = useState<Vehicle[]>([]);
+    const [selectedImportIndices, setSelectedImportIndices] = useState<Set<number>>(new Set());
 
     useEffect(() => {
         loadData();
@@ -91,56 +93,91 @@ export const VehiclesManager: React.FC = () => {
 
     // --- IMPORT HANDLERS ---
 
-    const handleImport = async () => {
+    const resetImport = () => {
+        setImportData('');
+        setImportCandidates([]);
+        setSelectedImportIndices(new Set());
+        setShowImport(false);
+    };
+
+    const analyzeImport = () => {
         try {
             const parsed = JSON.parse(importData);
-            
-            // Check if it's the User's specific format { "veicoli": [...] } or a flat array
             const rawList = parsed.veicoli || (Array.isArray(parsed) ? parsed : null);
 
             if (!rawList || !Array.isArray(rawList)) {
                 throw new Error("Formato non valido. Atteso oggetto con chiave 'veicoli' o un array.");
             }
             
-            // Map User's JSON structure to App structure
-            const validVehicles: Vehicle[] = rawList.map((v: any) => {
+            const candidates: Vehicle[] = rawList.map((v: any, idx: number) => {
                 let type: VehicleType = 'tractor';
                 let subType: TrailerSubType = null;
 
-                // Map 'tipo' from file (e.g., 'Motrice', 'Semi Cisterna') to internal types
                 if (v.tipo === 'Motrice') {
                     type = 'tractor';
                 } else if (v.tipo && v.tipo.toLowerCase().includes('semi')) {
                     type = 'trailer';
                 }
 
-                // Map 'settore' or 'tipo' to subType
                 if (type === 'trailer') {
                     const s = (v.settore || v.tipo || '').toLowerCase();
                     if (s.includes('cisterna')) subType = 'cisterna';
                     else if (s.includes('centina')) subType = 'centina';
-                    else subType = 'container'; // Default for trailers if unknown
+                    else subType = 'container';
                 }
 
                 return {
-                    id: v.id, // KEEP ORIGINAL ID to maintain 'abbinatoA' links
+                    id: v.id || `imp_${Date.now()}_${idx}`, 
                     plate: v.targa ? v.targa.toUpperCase() : '???',
                     code: v.codiceInterno ? v.codiceInterno.toUpperCase() : '???',
                     type: type,
                     subType: subType,
-                    // Map 'abbinatoA' to 'defaultTrailerId' ONLY if it's a tractor
                     defaultTrailerId: (type === 'tractor' && v.abbinatoA) ? v.abbinatoA : null
                 };
             });
 
-            await batchImportVehicles(validVehicles);
-            setImportData('');
-            setShowImport(false);
-            loadData();
-            alert(`Importati ${validVehicles.length} veicoli con successo!`);
+            setImportCandidates(candidates);
+            // Default select all
+            setSelectedImportIndices(new Set(candidates.map((_, i) => i)));
         } catch (err) {
-            alert("Errore Importazione: Verifica che il formato JSON sia corretto.");
+            alert("Errore Analisi JSON: Verifica il formato.");
             console.error(err);
+        }
+    };
+
+    const toggleSelection = (index: number) => {
+        const newSet = new Set(selectedImportIndices);
+        if (newSet.has(index)) {
+            newSet.delete(index);
+        } else {
+            newSet.add(index);
+        }
+        setSelectedImportIndices(newSet);
+    };
+
+    const toggleAll = () => {
+        if (selectedImportIndices.size === importCandidates.length) {
+            setSelectedImportIndices(new Set());
+        } else {
+            setSelectedImportIndices(new Set(importCandidates.map((_, i) => i)));
+        }
+    };
+
+    const executeImport = async () => {
+        if (selectedImportIndices.size === 0) {
+            alert("Seleziona almeno un veicolo da importare.");
+            return;
+        }
+
+        const toImport = importCandidates.filter((_, i) => selectedImportIndices.has(i));
+
+        try {
+            await batchImportVehicles(toImport);
+            alert(`Importati ${toImport.length} veicoli con successo!`);
+            resetImport();
+            loadData();
+        } catch (err) {
+            alert("Errore durante l'importazione nel database.");
         }
     };
 
@@ -201,27 +238,96 @@ export const VehiclesManager: React.FC = () => {
 
             {/* IMPORT MODAL */}
             {showImport && (
-                <div className="bg-white p-5 rounded-xl shadow-lg border-2 border-blue-500 animate-fade-in-down relative">
-                    <button onClick={() => setShowImport(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-800"><X size={20}/></button>
-                    <h3 className="font-bold text-lg text-slate-800 mb-2 flex items-center gap-2">
-                        <Upload size={20} className="text-blue-600"/> Importazione Massiva
-                    </h3>
-                    <p className="text-sm text-slate-500 mb-4">
-                        Incolla qui sotto il JSON esportato dall'altra applicazione.
-                        Verranno importati Targhe, Codici e Abbinamenti.
-                    </p>
-                    <textarea 
-                        className="w-full h-40 p-3 bg-slate-50 border border-slate-200 rounded-lg font-mono text-xs mb-4 focus:ring-2 focus:ring-blue-500 outline-none"
-                        placeholder='{ "veicoli": [ ... ] }'
-                        value={importData}
-                        onChange={(e) => setImportData(e.target.value)}
-                    />
-                    <button 
-                        onClick={handleImport}
-                        className="w-full py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700"
-                    >
-                        AVVIA IMPORTAZIONE
-                    </button>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white w-full max-w-lg rounded-2xl p-6 shadow-2xl animate-fade-in-up flex flex-col max-h-[90vh]">
+                        <div className="flex justify-between items-start mb-4">
+                            <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                                <Upload size={20} className="text-blue-600"/> Importazione Massiva
+                            </h3>
+                            <button onClick={resetImport} className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-800">
+                                <X size={24}/>
+                            </button>
+                        </div>
+                        
+                        {/* STEP 1: PASTE JSON */}
+                        {importCandidates.length === 0 ? (
+                            <>
+                                <p className="text-sm text-slate-500 mb-4">
+                                    Incolla il JSON esportato. Il sistema analizzerà i veicoli contenuti.
+                                </p>
+                                <textarea 
+                                    className="w-full h-40 p-3 bg-slate-50 border border-slate-200 rounded-lg font-mono text-xs mb-4 focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder='{ "veicoli": [ ... ] }'
+                                    value={importData}
+                                    onChange={(e) => setImportData(e.target.value)}
+                                />
+                                <button 
+                                    onClick={analyzeImport}
+                                    disabled={!importData.trim()}
+                                    className="w-full py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                    ANALIZZA FILE
+                                </button>
+                            </>
+                        ) : (
+                        /* STEP 2: SELECT VEHICLES */
+                            <>
+                                <div className="flex justify-between items-center mb-2 px-2">
+                                    <span className="text-sm text-slate-500">
+                                        Trovati <strong>{importCandidates.length}</strong> veicoli.
+                                    </span>
+                                    <button 
+                                        onClick={toggleAll}
+                                        className="text-xs font-bold text-blue-600 hover:underline"
+                                    >
+                                        {selectedImportIndices.size === importCandidates.length ? 'Deseleziona Tutti' : 'Seleziona Tutti'}
+                                    </button>
+                                </div>
+                                
+                                <div className="flex-1 overflow-y-auto border border-slate-200 rounded-lg bg-slate-50 mb-4">
+                                    {importCandidates.map((v, idx) => {
+                                        const isSelected = selectedImportIndices.has(idx);
+                                        return (
+                                            <div 
+                                                key={idx} 
+                                                onClick={() => toggleSelection(idx)}
+                                                className={`p-3 border-b border-slate-200 flex items-center gap-3 cursor-pointer hover:bg-slate-100 ${isSelected ? 'bg-blue-50' : ''}`}
+                                            >
+                                                <div className={isSelected ? 'text-blue-600' : 'text-slate-300'}>
+                                                    {isSelected ? <CheckSquare size={20} /> : <Square size={20} />}
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-bold text-slate-800">{v.plate}</span>
+                                                        <span className="text-xs font-mono bg-white border px-1 rounded text-slate-500">{v.code}</span>
+                                                    </div>
+                                                    <div className="text-xs text-slate-500">
+                                                        {v.type === 'tractor' ? 'Motrice' : `Rimorchio (${v.subType || '-'})`}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button 
+                                        onClick={resetImport}
+                                        className="py-3 bg-slate-100 text-slate-600 font-bold rounded-lg hover:bg-slate-200"
+                                    >
+                                        ANNULLA
+                                    </button>
+                                    <button 
+                                        onClick={executeImport}
+                                        disabled={selectedImportIndices.size === 0}
+                                        className="py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 disabled:opacity-50"
+                                    >
+                                        IMPORTA ({selectedImportIndices.size})
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
                 </div>
             )}
 

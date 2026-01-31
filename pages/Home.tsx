@@ -166,17 +166,26 @@ export const Home: React.FC = () => {
   const getMonthKey = (date: Date) => date.toISOString().slice(0, 7);
   const monthKey = getMonthKey(viewDate);
 
-  // Filter only TRACTORS for the selector
+  // STRICT RULE: Only Tractors in the Dropdown
   const tractorsOnly = availableVehicles.filter(v => v.type === 'tractor');
+  
+  // Check if the currently assigned vehicle is invalid (e.g., Master assigned a Trailer)
+  // This explains to the user why the field might look empty or why they can't select their assigned vehicle
+  const isAssignedVehicleInvalid = currentVehicle && currentVehicle.type !== 'tractor';
 
   useEffect(() => {
     const loadData = async () => {
-      if (!user || !currentVehicle) return;
+      if (!user) return;
       
       const allStats = await getUserMonthlyStats(user.uid, monthKey);
       
       const vehicleIdsToShow = new Set<string>();
-      vehicleIdsToShow.add(currentVehicle.id);
+      
+      // Only add current vehicle to stats list if it is a tractor (valid)
+      if (currentVehicle && currentVehicle.type === 'tractor') {
+          vehicleIdsToShow.add(currentVehicle.id);
+      }
+      
       allStats.forEach(s => vehicleIdsToShow.add(s.vehicleId));
 
       const list = Array.from(vehicleIdsToShow).map(vId => {
@@ -248,20 +257,32 @@ export const Home: React.FC = () => {
          {/* RIGHT: Vehicle Selector (Shrink-0 prevents it from squishing) */}
          <div className="text-right shrink-0">
              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Motrice</span>
-             <div className="relative inline-block">
-                 <select 
-                     value={currentVehicle?.id || ''}
-                     onChange={(e) => setVehicle(e.target.value)}
-                     className="appearance-none bg-blue-50 text-blue-700 font-bold py-2 pl-4 pr-10 rounded-xl border border-blue-100 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all active:scale-95 text-lg w-full max-w-[140px]"
-                 >
-                     {tractorsOnly.map(v => (
-                         <option key={v.id} value={v.id}>
-                             {v.plate}
-                         </option>
-                     ))}
-                 </select>
-                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-500 pointer-events-none" size={18} />
-             </div>
+             
+             {/* Error Message if Assigned Vehicle is NOT a Tractor */}
+             {isAssignedVehicleInvalid ? (
+                 <div className="text-right">
+                     <div className="bg-red-50 text-red-600 text-[10px] font-bold px-2 py-1 rounded border border-red-100 max-w-[140px]">
+                         <AlertCircle size={12} className="inline mr-1" />
+                         Errato: {currentVehicle.plate}
+                     </div>
+                     <p className="text-[9px] text-red-400 mt-0.5">Non è una motrice</p>
+                 </div>
+             ) : (
+                 <div className="relative inline-block">
+                     <select 
+                         value={currentVehicle?.id || ''}
+                         onChange={(e) => setVehicle(e.target.value)}
+                         className="appearance-none bg-blue-50 text-blue-700 font-bold py-2 pl-4 pr-10 rounded-xl border border-blue-100 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all active:scale-95 text-lg w-full max-w-[140px] truncate"
+                     >
+                         {tractorsOnly.map(v => (
+                             <option key={v.id} value={v.id}>
+                                 {v.plate}
+                             </option>
+                         ))}
+                     </select>
+                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-500 pointer-events-none" size={18} />
+                 </div>
+             )}
          </div>
       </div>
 
@@ -280,17 +301,23 @@ export const Home: React.FC = () => {
 
          {/* Vehicle List */}
          <div className="max-h-80 overflow-y-auto">
-             {activeVehiclesList.map((item) => (
-                 <VehicleStatRow 
-                    key={item.vehicle.id}
-                    vehicle={item.vehicle}
-                    monthKey={monthKey}
-                    userId={user!.uid}
-                    isAssigned={item.vehicle.id === user?.assignedVehicleId}
-                    initialStats={item.stats}
-                    onStatsUpdate={() => setRefreshTrigger(prev => prev + 1)}
-                 />
-             ))}
+             {activeVehiclesList.length === 0 ? (
+                 <div className="p-6 text-center text-slate-400 text-sm">
+                     Nessuna statistica km per questo mese.
+                 </div>
+             ) : (
+                 activeVehiclesList.map((item) => (
+                     <VehicleStatRow 
+                        key={item.vehicle.id}
+                        vehicle={item.vehicle}
+                        monthKey={monthKey}
+                        userId={user!.uid}
+                        isAssigned={item.vehicle.id === user?.assignedVehicleId}
+                        initialStats={item.stats}
+                        onStatsUpdate={() => setRefreshTrigger(prev => prev + 1)}
+                     />
+                 ))
+             )}
          </div>
          
          {/* Grand Total Bar (Driver's Monthly Total) */}

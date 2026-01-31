@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getUsers, updateUserProfile, deleteUserProfile, getVehicles } from '../services/db';
 import { UserProfile, Vehicle, Role, SectorType, UserStatus } from '../types';
-import { ArrowLeft, User, Shield, Briefcase, Truck, Save, CheckCircle, XCircle, Trash2, Clock, Ban } from 'lucide-react';
+import { ArrowLeft, User, Shield, Briefcase, Truck, Save, CheckCircle, XCircle, Trash2, Clock, Ban, AlertTriangle } from 'lucide-react';
 
 // Helper: Title Case (Mario Rossi)
 const toTitleCase = (str: string) => {
@@ -81,6 +81,10 @@ export const UsersManager: React.FC = () => {
         }
     };
 
+    // Filter/Group Vehicles for Dropdown
+    const tractors = vehicles.filter(v => v.type === 'tractor');
+    const trailers = vehicles.filter(v => v.type === 'trailer');
+
     return (
         <div className="space-y-6 pb-10">
             <div className="flex items-center gap-4">
@@ -107,6 +111,16 @@ export const UsersManager: React.FC = () => {
                         const subLabel = hasName ? u.email : null;
 
                         if (isEditing) {
+                            // Check for conflicts
+                            const conflictingUser = assignedVehicle ? users.find(other => 
+                                other.uid !== u.uid && 
+                                other.assignedVehicleId === assignedVehicle
+                            ) : null;
+                            
+                            const conflictingUserName = conflictingUser 
+                                ? (conflictingUser.displayName ? toTitleCase(conflictingUser.displayName) : conflictingUser.email)
+                                : null;
+
                             return (
                                 <div key={u.uid} className="bg-white p-5 rounded-xl shadow-lg border-2 border-blue-500 animate-fade-in-down">
                                     <h3 className="font-bold text-lg leading-tight text-slate-800">{mainLabel}</h3>
@@ -174,10 +188,32 @@ export const UsersManager: React.FC = () => {
                                                 onChange={(e) => setAssignedVehicle(e.target.value)}
                                             >
                                                 <option value="">-- Nessun Veicolo --</option>
-                                                {vehicles.map(veh => (
-                                                    <option key={veh.id} value={veh.id}>{veh.plate} - {veh.code}</option>
-                                                ))}
+                                                {tractors.length > 0 && (
+                                                    <optgroup label="MOTRICI (Consigliato)">
+                                                        {tractors.map(veh => (
+                                                            <option key={veh.id} value={veh.id}>{veh.plate} - {veh.code}</option>
+                                                        ))}
+                                                    </optgroup>
+                                                )}
+                                                {trailers.length > 0 && (
+                                                    <optgroup label="RIMORCHI">
+                                                        {trailers.map(veh => (
+                                                            <option key={veh.id} value={veh.id}>{veh.plate} - {veh.code}</option>
+                                                        ))}
+                                                    </optgroup>
+                                                )}
                                             </select>
+                                            
+                                            {/* CONFLICT WARNING */}
+                                            {conflictingUser && (
+                                                <div className="mt-2 bg-yellow-50 text-yellow-800 text-xs p-2 rounded-lg border border-yellow-200 flex items-start gap-2">
+                                                    <AlertTriangle size={16} className="shrink-0 text-yellow-600 mt-0.5" />
+                                                    <span>
+                                                        <strong>Attenzione:</strong> Questo veicolo è attualmente assegnato a <strong>{conflictingUserName}</strong>.
+                                                        Se salvi, verrà riassegnato a questo utente.
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
