@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getVehicles, addVehicle, updateVehicle, deleteVehicle, batchImportVehicles } from '../services/db';
 import { Vehicle, VehicleType, TrailerSubType } from '../types';
-import { ArrowLeft, Plus, Trash2, Truck, Container, Edit2, Link as LinkIcon, Upload, Save, X, CheckSquare, Square, FileJson, Settings, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Truck, Container, Edit2, Link as LinkIcon, Upload, Save, X, CheckSquare, Square, FileJson, Settings, AlertCircle, CheckCircle } from 'lucide-react';
 
 export const VehiclesManager: React.FC = () => {
     const navigate = useNavigate();
@@ -14,6 +14,9 @@ export const VehiclesManager: React.FC = () => {
     const [showForm, setShowForm] = useState(false);
     const [showImport, setShowImport] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
+
+    // Toast Notification State
+    const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
     // Form State
     const [formData, setFormData] = useState<Partial<Vehicle>>({
@@ -41,6 +44,18 @@ export const VehiclesManager: React.FC = () => {
         loadData();
     }, []);
 
+    // Auto-dismiss toast
+    useEffect(() => {
+        if (toast) {
+            const timer = setTimeout(() => setToast(null), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [toast]);
+
+    const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
+        setToast({ msg, type });
+    };
+
     const loadData = async () => {
         setLoading(true);
         const data = await getVehicles();
@@ -67,13 +82,14 @@ export const VehiclesManager: React.FC = () => {
         if (confirm("Eliminare definitivamente questo veicolo?")) {
             await deleteVehicle(id);
             setVehicles(prev => prev.filter(v => v.id !== id));
+            showToast("Veicolo eliminato");
         }
     };
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!formData.plate || !formData.code) {
-            alert("Targa e Codice sono obbligatori");
+            showToast("Targa e Codice sono obbligatori", 'error');
             return;
         }
 
@@ -89,13 +105,15 @@ export const VehiclesManager: React.FC = () => {
             if (editingId) {
                 await updateVehicle(editingId, payload);
                 setVehicles(prev => prev.map(v => v.id === editingId ? { ...v, ...payload } : v));
+                showToast("Veicolo aggiornato correttamente");
             } else {
                 const newId = await addVehicle(payload as Vehicle);
                 setVehicles(prev => [...prev, { ...payload, id: newId }]);
+                showToast("Veicolo aggiunto correttamente");
             }
             resetForm();
         } catch (error) {
-            alert("Errore nel salvataggio");
+            showToast("Errore nel salvataggio", 'error');
         }
     };
 
@@ -137,7 +155,7 @@ export const VehiclesManager: React.FC = () => {
 
     const processFile = (file: File) => {
         if (file.type !== "application/json" && !file.name.endsWith('.json')) {
-            alert("Per favore carica un file JSON valido.");
+            showToast("Per favore carica un file JSON valido.", 'error');
             return;
         }
 
@@ -148,7 +166,7 @@ export const VehiclesManager: React.FC = () => {
                 const json = JSON.parse(text);
                 analyzeJson(json);
             } catch (err) {
-                alert("Errore nella lettura del file JSON. Formato non valido.");
+                showToast("Errore nella lettura del file JSON. Formato non valido.", 'error');
             }
         };
         reader.readAsText(file);
@@ -193,7 +211,7 @@ export const VehiclesManager: React.FC = () => {
             }).filter((v: Vehicle) => v.plate !== '???'); // Basic filter for invalid data
 
             if (candidates.length === 0) {
-                alert("Nessun veicolo valido trovato nel file.");
+                showToast("Nessun veicolo valido trovato nel file.", 'error');
                 return;
             }
 
@@ -201,7 +219,7 @@ export const VehiclesManager: React.FC = () => {
             // Default select all
             setSelectedImportIndices(new Set(candidates.map((_, i) => i)));
         } catch (err) {
-            alert("Errore analisi dati.");
+            showToast("Errore analisi dati JSON.", 'error');
             console.error(err);
         }
     };
@@ -226,7 +244,7 @@ export const VehiclesManager: React.FC = () => {
 
     const executeImport = async () => {
         if (selectedImportIndices.size === 0) {
-            alert("Seleziona almeno un veicolo da importare.");
+            showToast("Seleziona almeno un veicolo da importare.", 'error');
             return;
         }
 
@@ -235,26 +253,24 @@ export const VehiclesManager: React.FC = () => {
         // CLEAN & FILTER DATA BASED ON CONFIG
         const finalImportList: Vehicle[] = selectedCandidates.map(c => {
             return {
-                // Ensure ID is unique/new or preserved if valid format. For simple import, we generate new ID if needed or let DB handle it if we used addDoc, but here batch set needs ID. 
-                // We'll use the ID from JSON if valid, else generate one.
-                id: c.id.startsWith('imp_') ? undefined : c.id, // Let Firestore gen ID if it was temp
+                id: c.id.startsWith('imp_') ? undefined : c.id, 
                 plate: c.plate,
                 type: c.type,
                 // CONDITIONAL FIELDS
                 code: importConfig.includeCode ? (c.code || 'N.D.') : 'N.D.',
                 subType: importConfig.includeSubType ? c.subType : null,
                 defaultTrailerId: importConfig.includeLink ? c.defaultTrailerId : null
-            } as Vehicle; // Explicit casting to ensure no extra properties are passed
+            } as Vehicle; 
         });
 
         try {
             await batchImportVehicles(finalImportList);
-            alert(`Importati ${finalImportList.length} veicoli con successo!`);
+            showToast(`Importati ${finalImportList.length} veicoli con successo!`);
             resetImport();
             loadData();
         } catch (err) {
             console.error(err);
-            alert("Errore durante l'importazione nel database.");
+            showToast("Errore durante l'importazione nel database.", 'error');
         }
     };
 
@@ -622,6 +638,15 @@ export const VehiclesManager: React.FC = () => {
                             );
                         })
                     )}
+                </div>
+            )}
+
+            {/* TOAST NOTIFICATION CONTAINER */}
+            {toast && (
+                <div className={`fixed bottom-6 left-4 right-4 p-4 rounded-xl shadow-2xl flex items-center gap-3 z-[60] animate-fade-in-up transition-colors ${toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-slate-800 text-white'}`}>
+                    {toast.type === 'error' ? <AlertCircle className="shrink-0" /> : <CheckCircle className="shrink-0" />}
+                    <span className="font-bold text-sm flex-1 leading-tight">{toast.msg}</span>
+                    <button onClick={() => setToast(null)} className="p-1 hover:bg-white/20 rounded-full"><X size={18}/></button>
                 </div>
             )}
         </div>
