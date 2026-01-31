@@ -276,7 +276,7 @@ export const RefuelForm: React.FC = () => {
     const costValue = isPartnered ? 0 : parseLocaleNumber(formData.cost);
 
     const payload = {
-        type: 'refuel',
+        type: 'refuel' as const, // Explicitly cast literal type
         subType: refuelType,
         userId: user.uid,
         vehicleId: currentVehicle.id,
@@ -284,7 +284,7 @@ export const RefuelForm: React.FC = () => {
         liters: parseLocaleNumber(formData.liters),
         cost: costValue,
         kmAtRefuel: parseLocaleNumber(formData.kmAtRefuel),
-        receiptUrl: null, // Placeholder for cloud url
+        receiptUrl: undefined, // Changed from null to undefined to match interface
         receiptData: receiptImage || undefined, // Base64 data
         timestamp: timestamp
     };
