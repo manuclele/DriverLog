@@ -3,6 +3,12 @@ import { useAuth } from '../context/AuthContext';
 import { LogOut, Truck, Shield, Briefcase } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
+// Helper: Title Case (Mario Rossi)
+const toTitleCase = (str: string) => {
+    if (!str) return '';
+    return str.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+};
+
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout, currentVehicle } = useAuth();
   const navigate = useNavigate();
@@ -24,6 +30,10 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       if (user?.role === 'owner') return '/owner';
       return '/dashboard';
   };
+  
+  const displayName = user?.displayName && user.displayName !== 'Utente' 
+        ? toTitleCase(user.displayName) 
+        : (user?.email || 'Utente');
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans max-w-md mx-auto shadow-2xl relative">
@@ -40,7 +50,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           <div className="flex items-center gap-3">
              <div className="text-right hidden sm:block">
                 <p className="text-xs text-slate-400">{getRoleLabel()}</p>
-                <p className="text-sm font-medium leading-none">{user.displayName || 'Utente'}</p>
+                <p className="text-sm font-medium leading-none">{displayName}</p>
              </div>
              <button 
                 onClick={logout}

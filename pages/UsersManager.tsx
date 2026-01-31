@@ -4,6 +4,12 @@ import { getUsers, updateUserProfile, deleteUserProfile, getVehicles } from '../
 import { UserProfile, Vehicle, Role, SectorType, UserStatus } from '../types';
 import { ArrowLeft, User, Shield, Briefcase, Truck, Save, CheckCircle, XCircle, Trash2, Clock, Ban } from 'lucide-react';
 
+// Helper: Title Case (Mario Rossi)
+const toTitleCase = (str: string) => {
+    if (!str) return '';
+    return str.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+};
+
 export const UsersManager: React.FC = () => {
     const navigate = useNavigate();
     const [users, setUsers] = useState<UserProfile[]>([]);
@@ -97,7 +103,7 @@ export const UsersManager: React.FC = () => {
                         
                         // Logic to show both name and email
                         const hasName = u.displayName && u.displayName !== 'Utente';
-                        const mainLabel = hasName ? u.displayName : (u.email || 'Utente Sconosciuto');
+                        const mainLabel = hasName ? toTitleCase(u.displayName!) : (u.email || 'Utente Sconosciuto');
                         const subLabel = hasName ? u.email : null;
 
                         if (isEditing) {

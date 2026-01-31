@@ -43,6 +43,11 @@ const InstallInstructions: React.FC<{ onClose: () => void }> = ({ onClose }) => 
     </div>
 );
 
+// Helper: Title Case (Mario Rossi)
+const toTitleCase = (str: string) => {
+    return str.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+};
+
 export const Login: React.FC = () => {
   const { login, loginWithEmail, registerWithEmail, demoLogin, user, authError } = useAuth();
   const navigate = useNavigate();
@@ -70,6 +75,11 @@ export const Login: React.FC = () => {
       return parts.length >= 2;
   };
 
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      // Auto format while typing (optional, mainly for final submission)
+      setDisplayName(e.target.value); 
+  };
+
   const handleEmailAuth = async (e: React.FormEvent) => {
       e.preventDefault();
       setLocalError('');
@@ -80,7 +90,9 @@ export const Login: React.FC = () => {
               if (!validateName(displayName)) {
                   throw new Error("Devi inserire NOME e COGNOME.");
               }
-              await registerWithEmail(email, password, displayName);
+              // Force Title Case before registering
+              const formattedName = toTitleCase(displayName);
+              await registerWithEmail(email, password, formattedName);
           } else {
               await loginWithEmail(email, password);
           }
@@ -152,9 +164,9 @@ export const Login: React.FC = () => {
                     <input 
                         type="text" 
                         placeholder="Nome e Cognome (Obbligatorio)"
-                        className="w-full pl-10 p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full pl-10 p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-sm outline-none focus:ring-2 focus:ring-blue-500 capitalize"
                         value={displayName}
-                        onChange={e => setDisplayName(e.target.value)}
+                        onChange={handleNameChange}
                         required
                     />
                 </div>

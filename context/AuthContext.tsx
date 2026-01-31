@@ -66,10 +66,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const resolveVehicleSelection = (userProfile: UserProfile, vehicles: Vehicle[]) => {
+    // 1. PRIORITY: Master Assigned Vehicle
+    // If the user has a vehicle assigned by the Master in the DB, force this selection.
+    if (userProfile.assignedVehicleId) {
+        const assigned = vehicles.find(v => v.id === userProfile.assignedVehicleId);
+        if (assigned) {
+            setCurrentVehicle(assigned);
+            // Also update local storage to keep it in sync
+            localStorage.setItem(`lastVehicle_${userProfile.uid}`, assigned.id);
+            return;
+        }
+    }
+
+    // 2. FALLBACK: Local Storage (Last used by driver)
+    // Only if NO vehicle is assigned by master
     const storedVehicleId = localStorage.getItem(`lastVehicle_${userProfile.uid}`);
-    const targetId = storedVehicleId || userProfile.assignedVehicleId;
-    const found = vehicles.find(v => v.id === targetId) || vehicles.find(v => v.id === userProfile.assignedVehicleId);
-    setCurrentVehicle(found || (vehicles.length > 0 ? vehicles[0] : null));
+    if (storedVehicleId) {
+        const stored = vehicles.find(v => v.id === storedVehicleId);
+        if (stored) {
+            setCurrentVehicle(stored);
+            return;
+        }
+    }
+
+    // 3. DEFAULT: First available vehicle or null
+    setCurrentVehicle(vehicles.length > 0 ? vehicles[0] : null);
   };
 
   useEffect(() => {
@@ -195,6 +216,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const selected = availableVehicles.find(v => v.id === vehicleId);
     if (selected) {
       setCurrentVehicle(selected);
+      // Only allow local override if NO master assignment, or just for temporary session
       localStorage.setItem(`lastVehicle_${user.uid}`, vehicleId);
     }
   };
