@@ -35,6 +35,12 @@ const formatNumber = (num: string | number | null): string => {
   return n.toLocaleString('it-IT');
 };
 
+// Helper: Title Case (Mario Rossi)
+const toTitleCase = (str: string) => {
+    if (!str) return '';
+    return str.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+};
+
 // --- SUB-COMPONENT FOR INDIVIDUAL VEHICLE ROW ---
 const VehicleStatRow: React.FC<{
     vehicle: Vehicle;
@@ -209,8 +215,9 @@ export const Home: React.FC = () => {
 
   const monthName = viewDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' });
 
-  // Fallback name logic: Name > Email > Generic
-  const displayedName = (user?.displayName && user.displayName !== 'Utente') ? user.displayName : (user?.email || 'Autista');
+  // Formatting logic for Driver Name
+  const displayedName = (user?.displayName && user.displayName !== 'Utente') ? toTitleCase(user.displayName) : 'Autista';
+  const displayedEmail = user?.email || '';
 
   return (
     <div className="flex flex-col gap-5 pt-2">
@@ -220,14 +227,16 @@ export const Home: React.FC = () => {
       */}
       <div className={`bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between gap-4 ${!isDrivingAssigned ? 'border-orange-200 bg-orange-50/30' : ''}`}>
          
-         {/* LEFT: Driver Info (Flex-1 allows it to take space, min-w-0 allows truncation) */}
+         {/* LEFT: Driver Info */}
          <div className="flex-1 min-w-0">
              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Autista</span>
              
              {/* Name truncates with ellipsis if too long */}
-             <h2 className="text-2xl font-bold text-slate-800 leading-none truncate pr-2" title={displayedName}>
+             <h2 className="text-xl font-bold text-slate-800 leading-none truncate pr-2" title={displayedName}>
                  {displayedName}
              </h2>
+             {/* Email below name in small text */}
+             <p className="text-xs text-slate-500 font-medium truncate mt-0.5">{displayedEmail}</p>
              
              {!isDrivingAssigned && (
                  <span className="text-[10px] text-orange-600 font-bold flex items-center gap-1 mt-1.5">

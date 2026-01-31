@@ -75,12 +75,6 @@ export const UsersManager: React.FC = () => {
         }
     };
 
-    // Helper to determine display name
-    const getUserDisplayName = (u: UserProfile) => {
-        if (u.displayName && u.displayName !== 'Utente') return u.displayName;
-        return u.email || 'Utente Sconosciuto';
-    };
-
     return (
         <div className="space-y-6 pb-10">
             <div className="flex items-center gap-4">
@@ -100,12 +94,18 @@ export const UsersManager: React.FC = () => {
                     {users.map(u => {
                         const isEditing = editingUser === u.uid;
                         const v = vehicles.find(veh => veh.id === u.assignedVehicleId);
-                        const displayName = getUserDisplayName(u);
+                        
+                        // Logic to show both name and email
+                        const hasName = u.displayName && u.displayName !== 'Utente';
+                        const mainLabel = hasName ? u.displayName : (u.email || 'Utente Sconosciuto');
+                        const subLabel = hasName ? u.email : null;
 
                         if (isEditing) {
                             return (
                                 <div key={u.uid} className="bg-white p-5 rounded-xl shadow-lg border-2 border-blue-500 animate-fade-in-down">
-                                    <h3 className="font-bold text-lg mb-4">{displayName}</h3>
+                                    <h3 className="font-bold text-lg leading-tight text-slate-800">{mainLabel}</h3>
+                                    {subLabel && <p className="text-sm text-slate-500 mb-4">{subLabel}</p>}
+                                    {!subLabel && <div className="mb-4"></div>}
                                     
                                     <div className="space-y-4">
                                         {/* STATUS SELECTOR */}
@@ -177,7 +177,7 @@ export const UsersManager: React.FC = () => {
 
                                     <div className="flex gap-3 mt-6 border-t border-slate-100 pt-4">
                                         <button 
-                                            onClick={() => handleDeleteUser(u.uid, displayName)} 
+                                            onClick={() => handleDeleteUser(u.uid, mainLabel || '')} 
                                             className="p-3 bg-red-100 text-red-600 rounded-lg hover:bg-red-200"
                                             title="Elimina Utente"
                                         >
@@ -200,11 +200,13 @@ export const UsersManager: React.FC = () => {
                                     <div className={`p-2 rounded-full ${u.status === 'pending' ? 'bg-orange-100 text-orange-600' : 'bg-slate-100 text-slate-500'}`}>
                                         <User size={20} />
                                     </div>
-                                    <div>
-                                        <div className="flex items-center gap-2 mb-0.5">
-                                            <span className="font-bold text-slate-800 text-sm">{displayName}</span>
+                                    <div className="flex-1 min-w-0 pr-2">
+                                        <div className="flex items-center flex-wrap gap-2 mb-0.5">
+                                            <span className="font-bold text-slate-800 text-sm">{mainLabel}</span>
                                             {getRoleBadge(u.role)}
                                         </div>
+                                        {subLabel && <div className="text-xs text-slate-500 font-medium mb-1 truncate">{subLabel}</div>}
+                                        
                                         <div className="flex flex-col gap-0.5">
                                             {getStatusBadge(u.status || 'pending')}
                                             <span className="text-xs text-slate-500 flex items-center gap-1 mt-1">
@@ -215,7 +217,7 @@ export const UsersManager: React.FC = () => {
                                 </div>
                                 <button 
                                     onClick={() => startEdit(u)}
-                                    className="px-4 py-2 bg-slate-50 text-blue-600 text-xs font-bold rounded-lg border border-slate-200"
+                                    className="px-4 py-2 bg-slate-50 text-blue-600 text-xs font-bold rounded-lg border border-slate-200 shrink-0"
                                 >
                                     GESTISCI
                                 </button>
