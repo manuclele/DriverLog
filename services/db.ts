@@ -152,12 +152,15 @@ export const deleteSector = async (id: string) => {
 
 // --- USER MANAGEMENT ---
 export const syncUserProfile = async (uid: string, email: string | null, displayName: string | null): Promise<UserProfile> => {
+    // DEVELOPER OVERRIDE: Automatically make this email a Master
+    const isAdminEmail = email === 'manuclele@gmail.com';
+
     const initialProfile: UserProfile = {
         uid,
         email,
         displayName,
-        role: 'driver',
-        status: 'pending',
+        role: isAdminEmail ? 'master' : 'driver',
+        status: isAdminEmail ? 'active' : 'pending',
         assignedVehicleId: '',
         assignedSector: 'Container'
     };
@@ -168,7 +171,15 @@ export const syncUserProfile = async (uid: string, email: string | null, display
     const userSnap = await getDoc(userRef);
 
     if (userSnap.exists()) {
-        return userSnap.data() as UserProfile;
+        const data = userSnap.data() as UserProfile;
+        
+        // Auto-fix permissions for dev if they were created with wrong role previously
+        if (isAdminEmail && data.role !== 'master') {
+             await updateDoc(userRef, { role: 'master', status: 'active' });
+             return { ...data, role: 'master', status: 'active' };
+        }
+        
+        return data;
     } else {
         await setDoc(userRef, initialProfile);
         return initialProfile;
