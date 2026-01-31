@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getVehicles, addVehicle, updateVehicle, deleteVehicle, batchImportVehicles } from '../services/db';
 import { Vehicle, VehicleType, TrailerSubType } from '../types';
-import { ArrowLeft, Plus, Trash2, Truck, Container, Edit2, Link as LinkIcon, Upload, Save, X, CheckSquare, Square } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Truck, Container, Edit2, Link as LinkIcon, Upload, Save, X, CheckSquare, Square, FileJson, Settings, AlertCircle } from 'lucide-react';
 
 export const VehiclesManager: React.FC = () => {
     const navigate = useNavigate();
@@ -25,9 +25,17 @@ export const VehiclesManager: React.FC = () => {
     });
 
     // Import State
-    const [importData, setImportData] = useState('');
     const [importCandidates, setImportCandidates] = useState<Vehicle[]>([]);
     const [selectedImportIndices, setSelectedImportIndices] = useState<Set<number>>(new Set());
+    const [dragActive, setDragActive] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Import Configuration (Which fields to include)
+    const [importConfig, setImportConfig] = useState({
+        includeCode: true,
+        includeLink: true,
+        includeSubType: true
+    });
 
     useEffect(() => {
         loadData();
@@ -51,7 +59,7 @@ export const VehiclesManager: React.FC = () => {
     const handleEdit = (v: Vehicle) => {
         setEditingId(v.id);
         setFormData(v);
-        setTab(v.type); // Switch to correct tab
+        setTab(v.type); 
         setShowForm(true);
     };
 
@@ -91,56 +99,109 @@ export const VehiclesManager: React.FC = () => {
         }
     };
 
-    // --- IMPORT HANDLERS ---
+    // --- IMPORT HANDLERS (DRAG & DROP) ---
 
     const resetImport = () => {
-        setImportData('');
         setImportCandidates([]);
         setSelectedImportIndices(new Set());
+        setDragActive(false);
         setShowImport(false);
+        setImportConfig({ includeCode: true, includeLink: true, includeSubType: true });
+        if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
-    const analyzeImport = () => {
+    const handleDrag = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.type === "dragenter" || e.type === "dragover") {
+            setDragActive(true);
+        } else if (e.type === "dragleave") {
+            setDragActive(false);
+        }
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragActive(false);
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            processFile(e.dataTransfer.files[0]);
+        }
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            processFile(e.target.files[0]);
+        }
+    };
+
+    const processFile = (file: File) => {
+        if (file.type !== "application/json" && !file.name.endsWith('.json')) {
+            alert("Per favore carica un file JSON valido.");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const text = e.target?.result as string;
+                const json = JSON.parse(text);
+                analyzeJson(json);
+            } catch (err) {
+                alert("Errore nella lettura del file JSON. Formato non valido.");
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    const analyzeJson = (parsed: any) => {
         try {
-            const parsed = JSON.parse(importData);
             const rawList = parsed.veicoli || (Array.isArray(parsed) ? parsed : null);
 
             if (!rawList || !Array.isArray(rawList)) {
-                throw new Error("Formato non valido. Atteso oggetto con chiave 'veicoli' o un array.");
+                throw new Error("Struttura JSON non valida. Atteso array o oggetto con chiave 'veicoli'.");
             }
             
             const candidates: Vehicle[] = rawList.map((v: any, idx: number) => {
                 let type: VehicleType = 'tractor';
                 let subType: TrailerSubType = null;
 
-                if (v.tipo === 'Motrice') {
+                // Robust type detection
+                const t = (v.tipo || '').toLowerCase();
+                const s = (v.settore || '').toLowerCase();
+                
+                if (t.includes('motrice') || t === 'tractor') {
                     type = 'tractor';
-                } else if (v.tipo && v.tipo.toLowerCase().includes('semi')) {
+                } else if (t.includes('semi') || t.includes('rimorchio') || t === 'trailer') {
                     type = 'trailer';
                 }
 
                 if (type === 'trailer') {
-                    const s = (v.settore || v.tipo || '').toLowerCase();
-                    if (s.includes('cisterna')) subType = 'cisterna';
-                    else if (s.includes('centina')) subType = 'centina';
+                    if (s.includes('cisterna') || t.includes('cisterna')) subType = 'cisterna';
+                    else if (s.includes('centina') || t.includes('centina')) subType = 'centina';
                     else subType = 'container';
                 }
 
                 return {
                     id: v.id || `imp_${Date.now()}_${idx}`, 
-                    plate: v.targa ? v.targa.toUpperCase() : '???',
-                    code: v.codiceInterno ? v.codiceInterno.toUpperCase() : '???',
+                    plate: v.targa ? v.targa.toUpperCase().trim() : '???',
+                    code: v.codiceInterno ? v.codiceInterno.toUpperCase().trim() : '',
                     type: type,
                     subType: subType,
                     defaultTrailerId: (type === 'tractor' && v.abbinatoA) ? v.abbinatoA : null
                 };
-            });
+            }).filter((v: Vehicle) => v.plate !== '???'); // Basic filter for invalid data
+
+            if (candidates.length === 0) {
+                alert("Nessun veicolo valido trovato nel file.");
+                return;
+            }
 
             setImportCandidates(candidates);
             // Default select all
             setSelectedImportIndices(new Set(candidates.map((_, i) => i)));
         } catch (err) {
-            alert("Errore Analisi JSON: Verifica il formato.");
+            alert("Errore analisi dati.");
             console.error(err);
         }
     };
@@ -169,14 +230,30 @@ export const VehiclesManager: React.FC = () => {
             return;
         }
 
-        const toImport = importCandidates.filter((_, i) => selectedImportIndices.has(i));
+        const selectedCandidates = importCandidates.filter((_, i) => selectedImportIndices.has(i));
+
+        // CLEAN & FILTER DATA BASED ON CONFIG
+        const finalImportList: Vehicle[] = selectedCandidates.map(c => {
+            return {
+                // Ensure ID is unique/new or preserved if valid format. For simple import, we generate new ID if needed or let DB handle it if we used addDoc, but here batch set needs ID. 
+                // We'll use the ID from JSON if valid, else generate one.
+                id: c.id.startsWith('imp_') ? undefined : c.id, // Let Firestore gen ID if it was temp
+                plate: c.plate,
+                type: c.type,
+                // CONDITIONAL FIELDS
+                code: importConfig.includeCode ? (c.code || 'N.D.') : 'N.D.',
+                subType: importConfig.includeSubType ? c.subType : null,
+                defaultTrailerId: importConfig.includeLink ? c.defaultTrailerId : null
+            } as Vehicle; // Explicit casting to ensure no extra properties are passed
+        });
 
         try {
-            await batchImportVehicles(toImport);
-            alert(`Importati ${toImport.length} veicoli con successo!`);
+            await batchImportVehicles(finalImportList);
+            alert(`Importati ${finalImportList.length} veicoli con successo!`);
             resetImport();
             loadData();
         } catch (err) {
+            console.error(err);
             alert("Errore durante l'importazione nel database.");
         }
     };
@@ -204,7 +281,7 @@ export const VehiclesManager: React.FC = () => {
                 <button 
                     onClick={() => setShowImport(true)}
                     className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg"
-                    title="Importa da App Esterna"
+                    title="Importa da File"
                 >
                     <Upload size={20} />
                 </button>
@@ -239,42 +316,115 @@ export const VehiclesManager: React.FC = () => {
             {/* IMPORT MODAL */}
             {showImport && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white w-full max-w-lg rounded-2xl p-6 shadow-2xl animate-fade-in-up flex flex-col max-h-[90vh]">
+                    <div className="bg-white w-full max-w-2xl rounded-2xl p-6 shadow-2xl animate-fade-in-up flex flex-col max-h-[90vh]">
                         <div className="flex justify-between items-start mb-4">
-                            <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-                                <Upload size={20} className="text-blue-600"/> Importazione Massiva
-                            </h3>
+                            <div>
+                                <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                                    <Upload size={20} className="text-blue-600"/> Importazione Massiva
+                                </h3>
+                                <p className="text-xs text-slate-400 mt-1">Carica un file JSON ed elimina i dati superflui.</p>
+                            </div>
                             <button onClick={resetImport} className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-800">
                                 <X size={24}/>
                             </button>
                         </div>
                         
-                        {/* STEP 1: PASTE JSON */}
+                        {/* STEP 1: DRAG & DROP ZONE */}
                         {importCandidates.length === 0 ? (
-                            <>
-                                <p className="text-sm text-slate-500 mb-4">
-                                    Incolla il JSON esportato. Il sistema analizzerà i veicoli contenuti.
-                                </p>
-                                <textarea 
-                                    className="w-full h-40 p-3 bg-slate-50 border border-slate-200 rounded-lg font-mono text-xs mb-4 focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder='{ "veicoli": [ ... ] }'
-                                    value={importData}
-                                    onChange={(e) => setImportData(e.target.value)}
-                                />
-                                <button 
-                                    onClick={analyzeImport}
-                                    disabled={!importData.trim()}
-                                    className="w-full py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 disabled:opacity-50"
+                            <div className="space-y-4">
+                                <div 
+                                    className={`border-2 border-dashed rounded-xl h-48 flex flex-col items-center justify-center gap-3 transition-colors cursor-pointer relative
+                                        ${dragActive ? 'border-blue-500 bg-blue-50' : 'border-slate-300 bg-slate-50 hover:border-slate-400 hover:bg-slate-100'}`}
+                                    onDragEnter={handleDrag}
+                                    onDragLeave={handleDrag}
+                                    onDragOver={handleDrag}
+                                    onDrop={handleDrop}
+                                    onClick={() => fileInputRef.current?.click()}
                                 >
-                                    ANALIZZA FILE
-                                </button>
-                            </>
+                                    <input 
+                                        ref={fileInputRef}
+                                        type="file" 
+                                        accept=".json,application/json"
+                                        className="hidden" 
+                                        onChange={handleFileChange}
+                                    />
+                                    
+                                    <div className="p-3 bg-white rounded-full shadow-sm">
+                                        <FileJson size={32} className={dragActive ? 'text-blue-600' : 'text-slate-400'} />
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="font-bold text-slate-700 text-sm">
+                                            {dragActive ? 'Rilascia il file qui' : 'Clicca o Trascina il file qui'}
+                                        </p>
+                                        <p className="text-xs text-slate-400 mt-1">Accetta solo file .json</p>
+                                    </div>
+                                </div>
+                            </div>
                         ) : (
-                        /* STEP 2: SELECT VEHICLES */
-                            <>
-                                <div className="flex justify-between items-center mb-2 px-2">
+                        /* STEP 2: CONFIGURE & SELECT */
+                            <div className="flex flex-col h-full overflow-hidden">
+                                {/* CONFIG BAR */}
+                                <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 mb-3 shrink-0">
+                                    <div className="flex items-center gap-2 mb-2 text-blue-800 font-bold text-xs uppercase tracking-wide">
+                                        <Settings size={14} /> Caratteristiche da Importare
+                                    </div>
+                                    <div className="flex flex-wrap gap-4">
+                                        {/* Mandatory Fields (Visual Only) */}
+                                        <label className="flex items-center gap-2 opacity-50 cursor-not-allowed" title="Obbligatorio">
+                                            <CheckSquare size={16} className="text-blue-600" />
+                                            <span className="text-sm font-bold text-slate-700">Targa</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 opacity-50 cursor-not-allowed" title="Obbligatorio">
+                                            <CheckSquare size={16} className="text-blue-600" />
+                                            <span className="text-sm font-bold text-slate-700">Tipo Veicolo</span>
+                                        </label>
+                                        
+                                        {/* Toggleable Fields */}
+                                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                                            <div className={importConfig.includeCode ? 'text-blue-600' : 'text-slate-400'}>
+                                                {importConfig.includeCode ? <CheckSquare size={16} /> : <Square size={16} />}
+                                            </div>
+                                            <input 
+                                                type="checkbox" className="hidden" 
+                                                checked={importConfig.includeCode}
+                                                onChange={e => setImportConfig(p => ({...p, includeCode: e.target.checked}))} 
+                                            />
+                                            <span className="text-sm text-slate-700">Codice Interno</span>
+                                        </label>
+
+                                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                                            <div className={importConfig.includeSubType ? 'text-blue-600' : 'text-slate-400'}>
+                                                {importConfig.includeSubType ? <CheckSquare size={16} /> : <Square size={16} />}
+                                            </div>
+                                            <input 
+                                                type="checkbox" className="hidden" 
+                                                checked={importConfig.includeSubType}
+                                                onChange={e => setImportConfig(p => ({...p, includeSubType: e.target.checked}))} 
+                                            />
+                                            <span className="text-sm text-slate-700">Sottotipo (Rimorchi)</span>
+                                        </label>
+
+                                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                                            <div className={importConfig.includeLink ? 'text-blue-600' : 'text-slate-400'}>
+                                                {importConfig.includeLink ? <CheckSquare size={16} /> : <Square size={16} />}
+                                            </div>
+                                            <input 
+                                                type="checkbox" className="hidden" 
+                                                checked={importConfig.includeLink}
+                                                onChange={e => setImportConfig(p => ({...p, includeLink: e.target.checked}))} 
+                                            />
+                                            <span className="text-sm text-slate-700">Abbinamento (Motrici)</span>
+                                        </label>
+                                    </div>
+                                    <div className="mt-2 text-[10px] text-blue-600/80">
+                                        <AlertCircle size={10} className="inline mr-1" />
+                                        I dati non selezionati e gli eventuali campi extra del JSON verranno scartati.
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-between items-center mb-2 px-2 shrink-0">
                                     <span className="text-sm text-slate-500">
-                                        Trovati <strong>{importCandidates.length}</strong> veicoli.
+                                        Veicoli trovati: <strong>{importCandidates.length}</strong>
                                     </span>
                                     <button 
                                         onClick={toggleAll}
@@ -291,18 +441,23 @@ export const VehiclesManager: React.FC = () => {
                                             <div 
                                                 key={idx} 
                                                 onClick={() => toggleSelection(idx)}
-                                                className={`p-3 border-b border-slate-200 flex items-center gap-3 cursor-pointer hover:bg-slate-100 ${isSelected ? 'bg-blue-50' : ''}`}
+                                                className={`p-3 border-b border-slate-200 flex items-center gap-3 cursor-pointer hover:bg-slate-100 ${isSelected ? 'bg-white' : ''}`}
                                             >
                                                 <div className={isSelected ? 'text-blue-600' : 'text-slate-300'}>
                                                     {isSelected ? <CheckSquare size={20} /> : <Square size={20} />}
                                                 </div>
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-2">
-                                                        <span className="font-bold text-slate-800">{v.plate}</span>
-                                                        <span className="text-xs font-mono bg-white border px-1 rounded text-slate-500">{v.code}</span>
+                                                        <span className={`font-bold ${isSelected ? 'text-slate-800' : 'text-slate-400'}`}>{v.plate}</span>
+                                                        
+                                                        {importConfig.includeCode && v.code && (
+                                                            <span className="text-xs font-mono bg-slate-100 border px-1 rounded text-slate-500">{v.code}</span>
+                                                        )}
                                                     </div>
-                                                    <div className="text-xs text-slate-500">
-                                                        {v.type === 'tractor' ? 'Motrice' : `Rimorchio (${v.subType || '-'})`}
+                                                    <div className="text-xs text-slate-500 flex gap-2">
+                                                        <span>{v.type === 'tractor' ? 'Motrice' : 'Rimorchio'}</span>
+                                                        {importConfig.includeSubType && v.subType && <span>• {v.subType}</span>}
+                                                        {importConfig.includeLink && v.defaultTrailerId && <span>• Abbinato: {v.defaultTrailerId}</span>}
                                                     </div>
                                                 </div>
                                             </div>
@@ -310,7 +465,7 @@ export const VehiclesManager: React.FC = () => {
                                     })}
                                 </div>
                                 
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-2 gap-3 shrink-0">
                                     <button 
                                         onClick={resetImport}
                                         className="py-3 bg-slate-100 text-slate-600 font-bold rounded-lg hover:bg-slate-200"
@@ -325,7 +480,7 @@ export const VehiclesManager: React.FC = () => {
                                         IMPORTA ({selectedImportIndices.size})
                                     </button>
                                 </div>
-                            </>
+                            </div>
                         )}
                     </div>
                 </div>
