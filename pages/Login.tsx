@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Truck, Shield, Briefcase, Info, X, Share, MoreVertical, Mail, Lock, User, AlertCircle, Wifi } from 'lucide-react';
+import { Truck, Shield, Briefcase, Info, X, Share, MoreVertical, Mail, Lock, User, AlertCircle, Wifi, Copy, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const InstallInstructions: React.FC<{ onClose: () => void }> = ({ onClose }) => (
@@ -55,6 +55,7 @@ export const Login: React.FC = () => {
   const [displayName, setDisplayName] = useState('');
   const [localError, setLocalError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -109,6 +110,12 @@ export const Login: React.FC = () => {
           console.error(e);
           setLocalError(e.message || "Errore avvio login Google.");
       }
+  };
+
+  const copyToClipboard = () => {
+      navigator.clipboard.writeText(window.location.hostname);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -256,10 +263,15 @@ export const Login: React.FC = () => {
       
       {/* HOSTNAME HELPER */}
       <div className="w-full max-w-sm mt-4 text-center">
-        <p className="text-[10px] text-slate-600 font-mono bg-slate-900/50 p-2 rounded border border-slate-700 inline-block">
-            <Wifi size={10} className="inline mr-1" />
-            Host Rilevato: <span className="text-slate-300 select-all font-bold">{window.location.hostname}</span>
-        </p>
+        <button 
+            onClick={copyToClipboard}
+            className="text-[10px] text-slate-500 font-mono bg-slate-900/50 hover:bg-slate-800 p-2 rounded border border-slate-700 inline-flex items-center gap-2 transition-all active:scale-95"
+            title="Copia per Firebase"
+        >
+            <Wifi size={10} />
+            Host: <span className="text-slate-300 select-all font-bold">{window.location.hostname}</span>
+            {copied ? <Check size={10} className="text-green-500" /> : <Copy size={10} />}
+        </button>
       </div>
 
     </div>

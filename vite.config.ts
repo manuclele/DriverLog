@@ -6,6 +6,8 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0',
+    port: 5173,      // Force port 5173
+    strictPort: true // Fail if port is busy instead of switching (keeps Firebase config valid)
   },
   build: {
     outDir: 'dist',
