@@ -1,12 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth, googleProvider } from '../services/firebase';
 import { 
-    signInWithPopup, 
+    signInWithRedirect, // Changed from Popup to Redirect
     signOut, 
     onAuthStateChanged, 
     createUserWithEmailAndPassword, 
     signInWithEmailAndPassword, 
     updateProfile,
+    getRedirectResult, // Added to handle return from Google
     User as FirebaseUser 
 } from 'firebase/auth';
 
@@ -25,6 +26,7 @@ interface AuthContextType {
   registerWithEmail: (email: string, pass: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
   demoLogin: (role?: Role) => void;
+  authError: string | null; // Added to expose redirect errors
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -39,6 +41,7 @@ const AuthContext = createContext<AuthContextType>({
   registerWithEmail: async () => {},
   logout: async () => {},
   demoLogin: () => {},
+  authError: null,
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -48,6 +51,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [availableVehicles, setAvailableVehicles] = useState<Vehicle[]>([]);
   const [currentVehicle, setCurrentVehicle] = useState<Vehicle | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Load vehicles helper
   const loadVehiclesData = async () => {
@@ -69,17 +73,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    // If Auth failed to initialize (e.g. config error), we might be in a forced mock state
     if (!auth) {
-      console.warn("Auth service not available. App might require Demo Login.");
+      console.warn("Auth service not available.");
       setLoading(false);
       return;
     }
 
+    // 1. Handle Redirect Result (Error catching from Google Login)
+    getRedirectResult(auth).catch((error) => {
+        console.error("Google Redirect Error:", error);
+        let msg = error.message;
+        if (error.code === 'auth/unauthorized-domain') {
+            msg = `Dominio non autorizzato (${window.location.hostname}). Aggiungilo in Firebase Console -> Auth -> Settings.`;
+        }
+        setAuthError(msg);
+    });
+
+    // 2. Listen for Auth State Changes
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       if (firebaseUser) {
+        setAuthError(null); // Clear errors on success
         try {
-            // 1. Get/Create User Profile in Firestore
+            // Get/Create User Profile in Firestore
             const userProfile = await syncUserProfile(
                 firebaseUser.uid, 
                 firebaseUser.email, 
@@ -87,14 +102,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             );
             setUser(userProfile);
             
-            // 2. Load Vehicles
+            // Load Vehicles
             const vehicles = await loadVehiclesData();
             
-            // 3. Resolve Vehicle
+            // Resolve Vehicle
             resolveVehicleSelection(userProfile, vehicles);
 
         } catch (error) {
             console.error("Error syncing user profile:", error);
+            setAuthError("Errore durante la sincronizzazione del profilo.");
             setUser(null);
         }
       } else {
@@ -109,32 +125,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async () => {
     if (!auth) throw new Error("Firebase non configurato.");
+    setAuthError(null);
     try {
-      await signInWithPopup(auth, googleProvider!);
+      // Use Redirect instead of Popup for better Mobile support
+      await signInWithRedirect(auth, googleProvider!);
     } catch (error: any) {
-      console.error("Login failed", error);
+      console.error("Login initiation failed", error);
+      setAuthError(error.message);
       throw error;
     }
   };
 
   const loginWithEmail = async (email: string, pass: string) => {
      if (!auth) throw new Error("Firebase non attivo");
+     setAuthError(null);
      await signInWithEmailAndPassword(auth, email, pass);
   };
 
   const registerWithEmail = async (email: string, pass: string, name: string) => {
       if (!auth) throw new Error("Firebase non attivo");
+      setAuthError(null);
       
-      // 1. Create Auth User
       const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
       
-      // 2. Update Display Name immediately in Auth
       if (userCredential.user) {
           await updateProfile(userCredential.user, {
               displayName: name
           });
-          
-          // 3. Force sync to create DB entry with correct name
           await syncUserProfile(userCredential.user.uid, email, name);
       }
   };
@@ -143,17 +160,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (auth) {
         await signOut(auth);
     }
-    // Clear state locally as well
     setUser(null);
     setCurrentVehicle(null);
     localStorage.removeItem(`lastVehicle_${user?.uid}`);
   };
 
-  // TRUE DEMO LOGIN for Preview Environment / Testing without Firebase
   const demoLogin = async (role: Role = 'driver') => {
     setLoading(true);
+    setAuthError(null);
     
-    // Create a mock user (Always ACTIVE for demo)
     const mockUser: UserProfile = {
         uid: 'demo-user-123',
         email: 'demo@driverlog.it',
@@ -164,16 +179,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         assignedSector: 'Container'
     };
 
-    // --- SEED DEMO DATA ---
-    // If it's a driver, we pre-populate the mock DB with realistic data
-    // so they see stats, trips, and logs immediately.
     if (role === 'driver') {
         seedDemoData(mockUser.uid);
     }
 
     setUser(mockUser);
-    
-    // Load mock vehicles (will be seeded by seedDemoData or already exist)
     const vehicles = await loadVehiclesData();
     resolveVehicleSelection(mockUser, vehicles);
     
@@ -198,6 +208,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       availableVehicles, 
       loading, 
       isDrivingAssigned,
+      authError,
       setVehicle, 
       login, 
       loginWithEmail,

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Truck, Shield, Briefcase, Info, X, Share, MoreVertical, Mail, Lock, User, AlertCircle } from 'lucide-react';
+import { Truck, Shield, Briefcase, Info, X, Share, MoreVertical, Mail, Lock, User, AlertCircle, Wifi } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const InstallInstructions: React.FC<{ onClose: () => void }> = ({ onClose }) => (
@@ -44,7 +44,7 @@ const InstallInstructions: React.FC<{ onClose: () => void }> = ({ onClose }) => 
 );
 
 export const Login: React.FC = () => {
-  const { login, loginWithEmail, registerWithEmail, demoLogin, user } = useAuth();
+  const { login, loginWithEmail, registerWithEmail, demoLogin, user, authError } = useAuth();
   const navigate = useNavigate();
   const [showInstallHelp, setShowInstallHelp] = useState(false);
   
@@ -53,14 +53,17 @@ export const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [error, setError] = useState('');
+  const [localError, setLocalError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (user) {
         navigate('/dashboard');
     }
   }, [user, navigate]);
+
+  // Display AuthContext errors (from Redirect) or Local form errors
+  const displayError = authError || localError;
 
   const validateName = (name: string) => {
       const parts = name.trim().split(/\s+/);
@@ -69,7 +72,7 @@ export const Login: React.FC = () => {
 
   const handleEmailAuth = async (e: React.FormEvent) => {
       e.preventDefault();
-      setError('');
+      setLocalError('');
       setLoading(true);
 
       try {
@@ -89,30 +92,22 @@ export const Login: React.FC = () => {
           if (err.code === 'auth/wrong-password') msg = "Password errata.";
           if (err.code === 'auth/email-already-in-use') msg = "Email già registrata.";
           if (err.code === 'auth/weak-password') msg = "Password troppo debole (min 6 caratteri).";
-          if (err.code === 'auth/operation-not-allowed') msg = "Login Email non abilitato in Firebase Console.";
-          if (err.message) msg = err.message;
+          if (err.message) msg = err.message; // Show detailed message for debugging
           
-          if (err.code === 'auth/operation-not-allowed') {
-             msg = "Login disabilitato. Usa i tasti 'Accesso Rapido Demo' in basso.";
-          }
-          
-          setError(msg);
+          setLocalError(msg);
       } finally {
           setLoading(false);
       }
   };
 
   const handleGoogleLogin = async () => {
-      setError('');
+      setLocalError('');
       try {
           await login();
+          // Redirect happens automatically
       } catch (e: any) {
           console.error(e);
-          if (e.code === 'auth/operation-not-allowed' || e.code === 'auth/unauthorized-domain') {
-              setError("Login Google non configurato. Usa i tasti 'Accesso Rapido Demo'.");
-          } else {
-              setError("Impossibile accedere con Google.");
-          }
+          setLocalError(e.message || "Errore avvio login Google.");
       }
   };
 
@@ -136,7 +131,7 @@ export const Login: React.FC = () => {
         Gestione flotta e viaggi semplificata.
       </p>
 
-      <div className="w-full max-w-sm space-y-4 pb-10">
+      <div className="w-full max-w-sm space-y-4 pb-2">
         
         {/* EMAIL FORM */}
         <form onSubmit={handleEmailAuth} className="bg-white p-5 rounded-xl shadow-lg space-y-3 animate-fade-in-up">
@@ -144,10 +139,10 @@ export const Login: React.FC = () => {
                 {mode === 'login' ? 'Accedi con Email' : 'Crea Account'}
             </h3>
             
-            {error && (
-                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-xs font-bold flex items-start gap-2 border border-red-100">
+            {displayError && (
+                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-xs font-bold flex items-start gap-2 border border-red-100 break-words">
                     <AlertCircle size={16} className="shrink-0 mt-0.5"/> 
-                    <span>{error}</span>
+                    <span>{displayError}</span>
                 </div>
             )}
 
@@ -201,7 +196,7 @@ export const Login: React.FC = () => {
             <div className="text-center pt-2">
                 <button 
                     type="button"
-                    onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }}
+                    onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setLocalError(''); }}
                     className="text-xs text-slate-500 underline hover:text-blue-600"
                 >
                     {mode === 'login' ? 'Non hai un account? Registrati' : 'Hai già un account? Accedi'}
@@ -257,8 +252,16 @@ export const Login: React.FC = () => {
                 </button>
             </div>
         </div>
-
       </div>
+      
+      {/* HOSTNAME HELPER */}
+      <div className="w-full max-w-sm mt-4 text-center">
+        <p className="text-[10px] text-slate-600 font-mono bg-slate-900/50 p-2 rounded border border-slate-700 inline-block">
+            <Wifi size={10} className="inline mr-1" />
+            Host Rilevato: <span className="text-slate-300 select-all font-bold">{window.location.hostname}</span>
+        </p>
+      </div>
+
     </div>
   );
 };
