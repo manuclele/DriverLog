@@ -17,10 +17,10 @@ const ActionCard: React.FC<{
     className={`${colorClass} w-full text-white p-6 rounded-2xl shadow-lg transform transition-all active:scale-95 flex flex-col items-center justify-center gap-3 h-40 relative overflow-hidden group`}
   >
     <div className="absolute -right-4 -top-4 opacity-20 transform rotate-12 group-hover:scale-110 transition-transform">
-        {React.cloneElement(icon as React.ReactElement, { size: 100 })}
+        {React.cloneElement(icon as React.ReactElement<any>, { size: 100 })}
     </div>
     <div className="z-10 bg-white/20 p-4 rounded-full backdrop-blur-sm">
-        {React.cloneElement(icon as React.ReactElement, { size: 32 })}
+        {React.cloneElement(icon as React.ReactElement<any>, { size: 32 })}
     </div>
     <span className="z-10 text-2xl font-bold tracking-wide">{title}</span>
     {subtext && <span className="z-10 text-xs opacity-90 font-medium bg-black/20 px-2 py-0.5 rounded-full">{subtext}</span>}
