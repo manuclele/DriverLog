@@ -14,6 +14,7 @@ import { UsersManager } from './pages/UsersManager';
 import { VehiclesManager } from './pages/VehiclesManager';
 import { FuelStationsManager } from './pages/FuelStationsManager';
 import { SectorsManager } from './pages/SectorsManager';
+import { SystemReset } from './pages/SystemReset';
 import { Clock, Lock, LogOut } from 'lucide-react';
 
 // --- COMPONENT: Access Denied ---
@@ -112,6 +113,7 @@ const AppRoutes = () => {
             <Route path="/master/vehicles" element={<RoleRoute allowedRoles={['master']}><VehiclesManager /></RoleRoute>} />
             <Route path="/master/fuel" element={<RoleRoute allowedRoles={['master']}><FuelStationsManager /></RoleRoute>} />
             <Route path="/master/sectors" element={<RoleRoute allowedRoles={['master']}><SectorsManager /></RoleRoute>} />
+            <Route path="/master/reset" element={<RoleRoute allowedRoles={['master']}><SystemReset /></RoleRoute>} />
 
             {/* OWNER */}
             <Route path="/owner" element={<RoleRoute allowedRoles={['owner']}><OwnerDashboard /></RoleRoute>} />

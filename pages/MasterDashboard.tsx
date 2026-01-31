@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Shield, Hammer, Truck, Users, FileText, ChevronRight, Fuel, Layers, Database } from 'lucide-react';
+import { Shield, Hammer, Truck, Users, FileText, ChevronRight, Fuel, Layers, Database, RotateCcw } from 'lucide-react';
 import { seedFirestore } from '../services/db';
 
 const AdminCard: React.FC<{
@@ -111,26 +111,29 @@ export const MasterDashboard: React.FC = () => {
       <div className="space-y-2">
         <h3 className="text-sm font-bold text-slate-500 uppercase ml-1">Strumenti Sistema</h3>
         
-        <AdminCard 
-            title="Registro Globale"
-            desc="Vedi tutti i viaggi e le spese."
-            icon={<FileText size={24} />}
-            color="bg-emerald-600"
-            onClick={() => alert('Work in progress: Registro Globale')}
-        />
-
-        <button 
-            onClick={handleSeed}
-            className="w-full p-5 rounded-xl border-2 border-dashed border-slate-300 flex items-center gap-4 text-left hover:bg-slate-50 hover:border-slate-400 transition-all text-slate-400 hover:text-slate-600"
-        >
-            <div className="p-3 rounded-xl bg-slate-100">
+        <div className="grid grid-cols-2 gap-3">
+             <button 
+                onClick={handleSeed}
+                className="p-5 rounded-xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center gap-2 hover:bg-slate-50 hover:border-slate-400 transition-all text-slate-400 hover:text-slate-600 bg-white"
+            >
                 <Database size={24} />
-            </div>
-            <div>
-                <h3 className="font-bold text-sm">Inizializza Database</h3>
-                <p className="text-xs">Carica settori e dati di esempio (Seed)</p>
-            </div>
-        </button>
+                <div className="text-center">
+                    <h3 className="font-bold text-xs">SEED DB</h3>
+                    <p className="text-[10px]">Dati Esempio</p>
+                </div>
+            </button>
+
+            <button 
+                onClick={() => navigate('/master/reset')}
+                className="p-5 rounded-xl border-2 border-red-100 flex flex-col items-center justify-center gap-2 hover:bg-red-50 hover:border-red-300 transition-all text-red-400 hover:text-red-600 bg-white"
+            >
+                <RotateCcw size={24} />
+                <div className="text-center">
+                    <h3 className="font-bold text-xs">RESET SISTEMA</h3>
+                    <p className="text-[10px]">Elimina Dati</p>
+                </div>
+            </button>
+        </div>
       </div>
     </div>
   );

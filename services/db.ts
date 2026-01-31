@@ -55,6 +55,50 @@ export const seedFirestore = async () => {
     }
 };
 
+// --- SYSTEM RESET UTILS ---
+const deleteCollectionBatch = async (collectionName: string, excludeId?: string) => {
+    if (!db) return;
+    const q = query(collection(db, collectionName));
+    const snapshot = await getDocs(q);
+    
+    // Firestore batch limit is 500. We do chunks.
+    const CHUNK_SIZE = 400; 
+    const docs = snapshot.docs;
+    
+    for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
+        const chunk = docs.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+        let count = 0;
+
+        chunk.forEach(docSnap => {
+            if (excludeId && docSnap.id === excludeId) return; // Skip protected doc
+            batch.delete(docSnap.ref);
+            count++;
+        });
+
+        if (count > 0) await batch.commit();
+    }
+};
+
+export const resetSystemData = async (scope: 'logs' | 'vehicles' | 'users' | 'all', currentUserId?: string) => {
+    if (!db) return;
+
+    if (scope === 'logs' || scope === 'all') {
+        await deleteCollectionBatch('logs');
+        await deleteCollectionBatch('monthly_stats');
+    }
+
+    if (scope === 'vehicles' || scope === 'all') {
+        await deleteCollectionBatch('vehicles');
+    }
+
+    if (scope === 'users' || scope === 'all') {
+        // IMPORTANT: Never delete the current Master user executing the reset
+        await deleteCollectionBatch('users', currentUserId);
+    }
+};
+
+
 // --- MOCK DATA SEEDER (Local Demo) ---
 export const seedDemoData = (userId: string) => {
     const today = new Date();

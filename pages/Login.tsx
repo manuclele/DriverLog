@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Truck, Shield, Briefcase, Info, X, Share, MoreVertical, Mail, Lock, User, ChevronRight, AlertCircle } from 'lucide-react';
+import { Truck, Shield, Briefcase, Info, X, Share, MoreVertical, Mail, Lock, User, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const InstallInstructions: React.FC<{ onClose: () => void }> = ({ onClose }) => (
@@ -85,11 +85,17 @@ export const Login: React.FC = () => {
           console.error(err);
           let msg = "Errore generico.";
           if (err.code === 'auth/invalid-email') msg = "Email non valida.";
-          if (err.code === 'auth/user-not-found') msg = "Utente non trovato.";
+          if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') msg = "Credenziali non valide.";
           if (err.code === 'auth/wrong-password') msg = "Password errata.";
           if (err.code === 'auth/email-already-in-use') msg = "Email già registrata.";
           if (err.code === 'auth/weak-password') msg = "Password troppo debole (min 6 caratteri).";
+          if (err.code === 'auth/operation-not-allowed') msg = "Login Email non abilitato in Firebase Console.";
           if (err.message) msg = err.message;
+          
+          if (err.code === 'auth/operation-not-allowed') {
+             msg = "Login disabilitato. Usa i tasti 'Accesso Rapido Demo' in basso.";
+          }
+          
           setError(msg);
       } finally {
           setLoading(false);
@@ -97,10 +103,16 @@ export const Login: React.FC = () => {
   };
 
   const handleGoogleLogin = async () => {
+      setError('');
       try {
           await login();
-      } catch (e) {
-          setError("Impossibile accedere con Google.");
+      } catch (e: any) {
+          console.error(e);
+          if (e.code === 'auth/operation-not-allowed' || e.code === 'auth/unauthorized-domain') {
+              setError("Login Google non configurato. Usa i tasti 'Accesso Rapido Demo'.");
+          } else {
+              setError("Impossibile accedere con Google.");
+          }
       }
   };
 
@@ -132,7 +144,12 @@ export const Login: React.FC = () => {
                 {mode === 'login' ? 'Accedi con Email' : 'Crea Account'}
             </h3>
             
-            {error && <div className="bg-red-50 text-red-600 p-2 rounded text-xs text-center font-bold flex items-center gap-2"><AlertCircle size={16}/> {error}</div>}
+            {error && (
+                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-xs font-bold flex items-start gap-2 border border-red-100">
+                    <AlertCircle size={16} className="shrink-0 mt-0.5"/> 
+                    <span>{error}</span>
+                </div>
+            )}
 
             {mode === 'register' && (
                 <div className="relative">
@@ -212,7 +229,7 @@ export const Login: React.FC = () => {
         {/* DEMO SECTION */}
         <div className="pt-6 space-y-3">
             <div className="text-center">
-                <span className="text-xs font-bold text-slate-500 uppercase">Accesso Rapido Demo</span>
+                <span className="text-xs font-bold text-slate-500 uppercase">Accesso Rapido Demo (Senza Account)</span>
             </div>
             
             <button
