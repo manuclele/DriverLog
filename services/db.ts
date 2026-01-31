@@ -155,10 +155,11 @@ export const syncUserProfile = async (uid: string, email: string | null, display
     // DEVELOPER OVERRIDE: Automatically make this email a Master
     const isAdminEmail = email === 'manuclele@gmail.com';
 
+    // Default Profile Structure
     const initialProfile: UserProfile = {
         uid,
         email,
-        displayName,
+        displayName: displayName || email?.split('@')[0] || 'Utente', // Fallback to email prefix if no name
         role: isAdminEmail ? 'master' : 'driver',
         status: isAdminEmail ? 'active' : 'pending',
         assignedVehicleId: '',
@@ -173,10 +174,20 @@ export const syncUserProfile = async (uid: string, email: string | null, display
     if (userSnap.exists()) {
         const data = userSnap.data() as UserProfile;
         
-        // Auto-fix permissions for dev if they were created with wrong role previously
-        if (isAdminEmail && data.role !== 'master') {
-             await updateDoc(userRef, { role: 'master', status: 'active' });
-             return { ...data, role: 'master', status: 'active' };
+        // AUTO-REPAIR: If DB has no name (or generic 'Utente') but Auth Provider provided one, UPDATE DB.
+        // Also auto-repair Master role for developer.
+        const needsNameUpdate = (!data.displayName || data.displayName === 'Utente') && displayName;
+        const needsRoleUpdate = isAdminEmail && data.role !== 'master';
+
+        if (needsNameUpdate || needsRoleUpdate) {
+            const updates: Partial<UserProfile> = {};
+            if (needsNameUpdate) updates.displayName = displayName;
+            if (needsRoleUpdate) {
+                updates.role = 'master';
+                updates.status = 'active';
+            }
+            await updateDoc(userRef, updates);
+            return { ...data, ...updates };
         }
         
         return data;

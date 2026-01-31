@@ -75,6 +75,12 @@ export const UsersManager: React.FC = () => {
         }
     };
 
+    // Helper to determine display name
+    const getUserDisplayName = (u: UserProfile) => {
+        if (u.displayName && u.displayName !== 'Utente') return u.displayName;
+        return u.email || 'Utente Sconosciuto';
+    };
+
     return (
         <div className="space-y-6 pb-10">
             <div className="flex items-center gap-4">
@@ -94,11 +100,12 @@ export const UsersManager: React.FC = () => {
                     {users.map(u => {
                         const isEditing = editingUser === u.uid;
                         const v = vehicles.find(veh => veh.id === u.assignedVehicleId);
+                        const displayName = getUserDisplayName(u);
 
                         if (isEditing) {
                             return (
                                 <div key={u.uid} className="bg-white p-5 rounded-xl shadow-lg border-2 border-blue-500 animate-fade-in-down">
-                                    <h3 className="font-bold text-lg mb-4">{u.displayName || u.email}</h3>
+                                    <h3 className="font-bold text-lg mb-4">{displayName}</h3>
                                     
                                     <div className="space-y-4">
                                         {/* STATUS SELECTOR */}
@@ -170,7 +177,7 @@ export const UsersManager: React.FC = () => {
 
                                     <div className="flex gap-3 mt-6 border-t border-slate-100 pt-4">
                                         <button 
-                                            onClick={() => handleDeleteUser(u.uid, u.displayName || 'Utente')} 
+                                            onClick={() => handleDeleteUser(u.uid, displayName)} 
                                             className="p-3 bg-red-100 text-red-600 rounded-lg hover:bg-red-200"
                                             title="Elimina Utente"
                                         >
@@ -195,7 +202,7 @@ export const UsersManager: React.FC = () => {
                                     </div>
                                     <div>
                                         <div className="flex items-center gap-2 mb-0.5">
-                                            <span className="font-bold text-slate-800">{u.displayName || 'Utente'}</span>
+                                            <span className="font-bold text-slate-800 text-sm">{displayName}</span>
                                             {getRoleBadge(u.role)}
                                         </div>
                                         <div className="flex flex-col gap-0.5">

@@ -209,6 +209,9 @@ export const Home: React.FC = () => {
 
   const monthName = viewDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' });
 
+  // Fallback name logic: Name > Email > Generic
+  const displayedName = (user?.displayName && user.displayName !== 'Utente') ? user.displayName : (user?.email || 'Autista');
+
   return (
     <div className="flex flex-col gap-5 pt-2">
       
@@ -222,8 +225,8 @@ export const Home: React.FC = () => {
              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Autista</span>
              
              {/* Name truncates with ellipsis if too long */}
-             <h2 className="text-2xl font-bold text-slate-800 leading-none truncate pr-2" title={user?.displayName || ''}>
-                 {user?.displayName || 'Utente'}
+             <h2 className="text-2xl font-bold text-slate-800 leading-none truncate pr-2" title={displayedName}>
+                 {displayedName}
              </h2>
              
              {!isDrivingAssigned && (
